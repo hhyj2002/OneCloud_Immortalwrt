@@ -61,6 +61,8 @@ env:
 jobs:
   build_brun_firmware:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write 
         
     steps:
     - name: 清理服务器空间(Ubuntu)
