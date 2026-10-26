@@ -142,7 +142,6 @@ jobs:
     - name: 加载自定义配置
       working-directory: ./openwrt
       run: |
-          # 已移除下载 banner 的命令，由 Settings.sh 接管
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
           if [[ "${DIY_P3_SH}" == *"false"* ]]; then
@@ -175,10 +174,8 @@ jobs:
             cat files/etc/rc.local
           fi
 
-          # 注意这里不再传 IP 参数了
           $GITHUB_WORKSPACE/$DIY_P6_SH
 
-          # amlogic6.6 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
           if [[ "${DIY_P4_SH}" == *"false"* ]]; then
@@ -211,7 +208,7 @@ jobs:
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        KERNEL_VER=$(grep -m 1 'LINUX_KERNEL_VERSION' target/linux/amlogic/Makefile | cut -d'=' -f2 | tr -d ' ')
+        KERNEL_VER=$(grep -oP 'CONFIG_LINUX_\K[0-9]+\.[0-9]+\.[0-9]+' .config | head -n 1)
         if [ -z "$KERNEL_VER" ]; then
           KERNEL_VER="unknown"
         fi
@@ -220,36 +217,27 @@ jobs:
 
     - name: 制作直刷包
       run: |
+          chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
           $GITHUB_WORKSPACE/Scripts/convert2.sh
 
     - name: 整理固件
       id: organize
       run: |
         cd openwrt
-        
-        KERNEL_VER=$(grep -m 1 'LINUX_KERNEL_VERSION' target/linux/amlogic/Makefile | cut -d'=' -f2 | tr -d ' ')
-        if [ -z "$KERNEL_VER" ]; then
-          KERNEL_VER="unknown"
-        fi
-        
         mkdir outfile
-        for f in bin/targets/*/*/*.tar; do
-          [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
-        done
-        for f in bin/targets/*/*/*.xz; do
-          [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+        
+        # 直接拷贝直刷包并重命名
+        for f in bin/targets/*/*/*.burn.img.xz; do
+          if [ -f "$f" ]; then
+            cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+          fi
         done
         
         cp -rf .config ./outfile/config.txt
-        rm -rf bin/targets/*/*/packages
 
         cd outfile
-
-        if ls *.tar >/dev/null 2>&1; then
-          if [[ $REPO_URL == *"immortalwrt"* ]]; then
-            gzip *.tar
-          fi
-        fi
+        echo "=== 检查最终上传的固件 ==="
+        ls -l
 
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "::set-output name=status::success"
