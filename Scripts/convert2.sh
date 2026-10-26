@@ -1,11 +1,14 @@
 #!/bin/bash
-set -e # 遇到错误立即退出，防止静默失败
+set -e # 遇到错误立即退出
 
-sudo apt install -y android-sdk-libsparse-utils
+sudo apt update && sudo apt install -y android-sdk-libsparse-utils
 ver="v0.3.2"
-curl -L -o ./AmlImg https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
+
+# 增加重试机制，防止网络波动导致下载失败
+curl -L -o ./AmlImg --retry 3 https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
 chmod +x ./AmlImg
-curl -L -o ./uboot.img https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
+
+curl -L -o ./uboot.img --retry 3 https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
 ./AmlImg unpack ./uboot.img burn/
 
 # 兼容处理：寻找并解压 .gz
@@ -21,7 +24,9 @@ if [ -z "$diskimg" ]; then
 fi
 
 echo "找到磁盘镜像: $diskimg"
+sudo modprobe loop || true
 loop=$(sudo losetup --find --show --partscan "$diskimg")
+
 img_ext="openwrt.img"
 img_mnt="xd"
 rootfs_mnt="img"
