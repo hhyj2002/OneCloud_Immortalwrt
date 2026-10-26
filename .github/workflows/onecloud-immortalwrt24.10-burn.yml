@@ -16,9 +16,6 @@ on:
         required: true
         default: '192.168.8.1'
         type: string
-  # 如需定时编译可取消注释，注意 UTC 时间
-  # schedule:
-  #   - cron: '0 0 2,15 * *'
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
