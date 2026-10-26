@@ -58,11 +58,14 @@ env:
   OWRT_brun_type: ${{ github.event.inputs.brun_type }}
   TZ: Asia/Shanghai
 
+# 修复403权限问题
+permissions:
+  contents: write
+
+
 jobs:
   build_burn_firmware:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write 
         
     steps:
     - name: 清理服务器空间(Ubuntu)
