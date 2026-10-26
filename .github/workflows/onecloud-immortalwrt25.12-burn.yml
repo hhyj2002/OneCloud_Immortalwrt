@@ -228,6 +228,19 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
+    - name: 获取内核版本
+      working-directory: ./openwrt
+      run: |
+         
+        # 或者更精确地读取生成的 vermagic（包含完整版本号，如 6.6.32）
+        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
+          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        fi
+        
+        echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
+        echo "获取到的内核版本为: $KERNEL_VER"
+          
+
     - name: 制作直刷包
       run: |
           $GITHUB_WORKSPACE/Scripts/convert2.sh
@@ -261,17 +274,20 @@ jobs:
       with:
         allowUpdates: true
         token: ${{ secrets.GITHUB_TOKEN }}
-        tag: OpenWrt_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}
+        # 把内核版本加到 Tag 里（可选，标签名不能有特殊字符）
+        tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
+        # 把内核版本加到 Release 说明中
         body: |
           自用玩客云一站式直刷固件！
           请使用双USB公头线刷机！
           ==========🧊 基本信息 🧊==========
           💻 固件源码： ${{env.OWRT_SOURCE}}
           💝 源码分支： ${{ env.OWRT_BRANCH }}
+          🧠 内核版本： ${{ env.KERNEL_VER }}
           🔑 默认密码： password
-          🌐 默认地址： ${{env.OWRT_IP}}
+          🌐 默认地址： 自动获取 (DHCP)
         artifacts: ${{ env.FIRMWARE }}/*
-
+  
     - name: 清理Releases
       uses: rmoyulong/delete-older-releases@master
       with:
