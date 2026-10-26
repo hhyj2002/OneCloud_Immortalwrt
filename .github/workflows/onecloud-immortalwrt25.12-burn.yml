@@ -1,5 +1,5 @@
 #========================================================================================================================
-# 独立编译 OneCloud amlogic6.12 直刷包（从 choice-quicker.yml 拆分）
+# 独立编译 OneCloud amlogic6.12 直刷包
 #========================================================================================================================
 name: 一站式精简onecloud-immortalwrt25.12 直刷包
 
@@ -22,13 +22,13 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-25.12
   FEEDS_CONF: feeds.conf.default
-  # 【注意】这里去掉了空格，请确保你仓库里的文件名叫 onecloud-immortalwrt25.12.config
+  # 请确保你的配置文件名已去掉空格
   CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  # 如果你确定不要 openclash，建议把它改成 Scripts/false
-  DIY_P4_SH: Scripts/false 
+  # 关闭了 openclash 注入脚本
+  DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
   UPLOAD_BIN_DIR: false
@@ -41,7 +41,7 @@ env:
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
-  # 【注意】统一变量名
+  # 变量名已统一去掉空格
   OWRT_CFG: Config/onecloud-immortalwrt25.12.config
   TZ: Asia/Shanghai
 
@@ -71,7 +71,6 @@ jobs:
       run: |
         echo "警告⚠"
         echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
-        echo -e "已知CPU型号（降序）： 9V74 7763，8370C，8272CL，8171M，E5-2673 \n"
         echo "--------------------------CPU信息--------------------------"
         echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
         echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
@@ -120,7 +119,6 @@ jobs:
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=amlogic6.12" >> $GITHUB_ENV
-          # 确保这里引用的配置文件名和上方完全一致
           echo "OWRT_CFG=Config/onecloud-immortalwrt25.12.config" >> $GITHUB_ENV
 
     - name: 克隆源仓库
@@ -180,8 +178,6 @@ jobs:
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
 
-          # 【已移除】原有的 Aria2 文件夹 chmod 代码
-
           rm -rf ./tmp* ./.config*
           [ -e $GITHUB_WORKSPACE/$OWRT_CFG ] && mv $GITHUB_WORKSPACE/$OWRT_CFG .config
 
@@ -202,6 +198,7 @@ jobs:
           # amlogic6.12 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
+          # 执行 DIY_P4_SH（目前被设置为 Scripts/false）
           $GITHUB_WORKSPACE/$DIY_P4_SH
 
           if [[ "${DIY_P5_SH}" == *"false"* ]]; then
@@ -297,7 +294,7 @@ jobs:
         keep_latest: 10
         delete_tags: true
 
-    - name: 清理Workflows
+    - name: 清理Workflow运行记录
       uses: rmoyulong/delete-workflow-runs@main
       with:
         retain_days: 0
