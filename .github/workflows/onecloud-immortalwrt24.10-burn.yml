@@ -1,33 +1,20 @@
 #========================================================================================================================
-# 独立编译 OneCloud amlogic6.6 直刷包（从 choice-quicker.yml 拆分）
+# 独立编译 OneCloud amlogic6.6 直刷包
 #========================================================================================================================
 name: 一站式精简Onecloud-Immortalwrt24.10直刷包
 
 on:
   workflow_dispatch:
-    inputs:
-      OP_IP:
-        description: '玩客云IP选项'
-        required: true
-        default: '192.168.8.59'
-        type: string
-      SERVER_IP:
-        description: '主路由IP选项'
-        required: true
-        default: '192.168.8.1'
-        type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-24.10
   FEEDS_CONF: feeds.conf.default
-  # 确保仓库存在此文件
   CONFIG_FILE: Config/onecloud-immortalwrt24.10-burn.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  # 关闭 openclash 注入脚本
   DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
@@ -36,8 +23,6 @@ env:
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: false
   UPLOAD_RELEASE: true
-  OWRT_IP: ${{ github.event.inputs.OP_IP }}
-  OWRT_SERVER_IP: ${{ github.event.inputs.SERVER_IP }}
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.6
@@ -111,8 +96,6 @@ jobs:
           echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
           echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
-          echo "OWRT_IP=$OWRT_IP" >> $GITHUB_ENV
-          echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
@@ -192,12 +175,12 @@ jobs:
             cat files/etc/rc.local
           fi
 
-          $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
+          # 注意这里不再传 IP 参数了
+          $GITHUB_WORKSPACE/$DIY_P6_SH
 
           # amlogic6.6 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
-          # 检查是否需要执行 DIY_P4_SH
           if [[ "${DIY_P4_SH}" == *"false"* ]]; then
             echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
           else
@@ -250,11 +233,9 @@ jobs:
         fi
         
         mkdir outfile
-        # 加入容错判断，只有存在 .tar 才复制
         for f in bin/targets/*/*/*.tar; do
           [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
         done
-        # 加入容错判断，只有存在 .xz 才复制
         for f in bin/targets/*/*/*.xz; do
           [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
         done
@@ -264,7 +245,6 @@ jobs:
 
         cd outfile
 
-        # 只有存在 .tar 文件才进行 gzip
         if ls *.tar >/dev/null 2>&1; then
           if [[ $REPO_URL == *"immortalwrt"* ]]; then
             gzip *.tar
