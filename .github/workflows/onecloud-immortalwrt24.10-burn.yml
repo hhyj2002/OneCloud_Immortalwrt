@@ -18,11 +18,6 @@ env:
   DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: false
-  UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: true
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.6
@@ -167,7 +162,6 @@ jobs:
           fi
           cp -rf $GITHUB_WORKSPACE/$OWRT_FILES/* ./files
 
-          ls -l files
           if [ ! -f files/etc/rc.local ]; then
             echo "rc.local文件不存在！"
           else
@@ -182,12 +176,6 @@ jobs:
             echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
           else
             $GITHUB_WORKSPACE/$DIY_P4_SH
-          fi
-
-          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
           fi
 
     - name: 下载编译环境
@@ -208,8 +196,10 @@ jobs:
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        KERNEL_VER=$(grep -oP 'CONFIG_LINUX_\K[0-9]+\.[0-9]+\.[0-9]+' .config | head -n 1)
-        if [ -z "$KERNEL_VER" ]; then
+        VMAGIC=$(find build_dir -name ".vermagic" | head -n 1)
+        if [ -n "$VMAGIC" ]; then
+          KERNEL_VER=$(cat "$VMAGIC" | awk '{print $1}' | cut -d'~' -f1)
+        else
           KERNEL_VER="unknown"
         fi
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
@@ -218,28 +208,32 @@ jobs:
     - name: 制作直刷包
       run: |
           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
-          $GITHUB_WORKSPACE/Scripts/convert2.sh
+          $GITHUB_WORKSPACE/Scripts/convert2.sh || true
 
     - name: 整理固件
       id: organize
       run: |
         cd openwrt
-        mkdir outfile
+        mkdir -p outfile
         
-        # 直接拷贝直刷包并重命名
         for f in bin/targets/*/*/*.burn.img.xz; do
           if [ -f "$f" ]; then
-            cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+            BASE_NAME=$(basename "$f")
+            cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
           fi
         done
         
         cp -rf .config ./outfile/config.txt
 
         cd outfile
-        echo "=== 检查最终上传的固件 ==="
-        ls -l
-
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        if ls *.xz >/dev/null 2>&1; then
+          echo "=== 检查最终上传的固件 ==="
+          ls -l
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        else
+          echo "❌ 错误：没有找到任何 .burn.img.xz 固件！"
+          exit 1
+        fi
         echo "::set-output name=status::success"
 
         export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
