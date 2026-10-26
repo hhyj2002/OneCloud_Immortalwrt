@@ -22,11 +22,13 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-24.10
   FEEDS_CONF: feeds.conf.default
+  # 注意：确保你的 GitHub 仓库里有这个同名的配置文件
   CONFIG_FILE: Config/onecloud-immortalwrt24.10-burn.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  DIY_P4_SH: Scripts/openclash32.sh
+  # 关闭 openclash 注入
+  DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
   UPLOAD_BIN_DIR: false
@@ -68,7 +70,6 @@ jobs:
       run: |
         echo "警告⚠"
         echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
-        echo -e "已知CPU型号（降序）： 9V74 7763，8370C，8272CL，8171M，E5-2673 \n"
         echo "--------------------------CPU信息--------------------------"
         echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
         echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
@@ -117,7 +118,8 @@ jobs:
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=amlogic6.6" >> $GITHUB_ENV
-          echo "OWRT_CFG=Config/quicker-amlogic.config" >> $GITHUB_ENV
+          # 统一修正了配置文件路径，不再指向 quicker-amlogic.config
+          echo "OWRT_CFG=Config/onecloud-immortalwrt24.10-burn.config" >> $GITHUB_ENV
 
     - name: 克隆源仓库
       working-directory: /workdir
@@ -176,10 +178,7 @@ jobs:
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
 
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/etc/aria2
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2/download
-          chmod -R 755 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/share
+          # 【已移除】原有的 Aria2 chmod 遗留代码
 
           rm -rf ./tmp* ./.config*
           [ -e $GITHUB_WORKSPACE/$OWRT_CFG ] && mv $GITHUB_WORKSPACE/$OWRT_CFG .config
@@ -224,6 +223,16 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
+    - name: 获取内核版本
+      working-directory: ./openwrt
+      run: |     
+        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
+          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        fi
+        
+        echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
+        echo "获取到的内核版本为: $KERNEL_VER"
+
     - name: 制作直刷包
       run: |
           $GITHUB_WORKSPACE/Scripts/convert2.sh
@@ -232,9 +241,20 @@ jobs:
       id: organize
       run: |
         cd openwrt
+        
+        KERNEL_VER="unknown"
+        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
+          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        fi
+        
         mkdir outfile
-        cp -rf bin/targets/*/*/*.tar ./outfile
-        cp -rf bin/targets/*/*/*.xz ./outfile
+        for f in bin/targets/*/*/*.tar; do
+          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+        done
+        for f in bin/targets/*/*/*.xz; do
+          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+        done
+        
         cp -rf .config ./outfile/config.txt
         rm -rf bin/targets/*/*/packages
 
@@ -257,15 +277,16 @@ jobs:
       with:
         allowUpdates: true
         token: ${{ secrets.GITHUB_TOKEN }}
-        tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}
+        tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
         body: |
           自用玩客云一站式直刷固件[amlogic6.6]！
           请使用双USB公头线刷机！
           ==========🧊 基本信息 🧊==========
           💻 固件源码： ${{env.OWRT_SOURCE}}
           💝 源码分支： ${{ env.OWRT_BRANCH }}
+          🧠 内核版本： ${{ env.KERNEL_VER }}
           🔑 默认密码： password
-          🌐 默认地址： ${{env.OWRT_IP}}
+          🌐 默认地址： 自动获取 (DHCP)
         artifacts: ${{ env.FIRMWARE }}/*
 
     - name: 清理Releases
