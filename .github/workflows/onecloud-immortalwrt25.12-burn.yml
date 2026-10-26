@@ -22,12 +22,12 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-25.12
   FEEDS_CONF: feeds.conf.default
-  # 请确保你的配置文件名已去掉空格
+  # 请确保你的配置文件真实存在且拼写一致
   CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  # 关闭了 openclash 注入脚本
+  # 关闭 openclash 注入脚本
   DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
@@ -41,7 +41,7 @@ env:
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
-  # 变量名已统一去掉空格
+  # 变量名已统一
   OWRT_CFG: Config/onecloud-immortalwrt25.12.config
   TZ: Asia/Shanghai
 
@@ -198,8 +198,12 @@ jobs:
           # amlogic6.12 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
-          # 执行 DIY_P4_SH（目前被设置为 Scripts/false）
-          $GITHUB_WORKSPACE/$DIY_P4_SH
+          # 修复 exit 127：检查是否需要执行 DIY_P4_SH
+          if [[ "${DIY_P4_SH}" == *"false"* ]]; then
+            echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
+          else
+            $GITHUB_WORKSPACE/$DIY_P4_SH
+          fi
 
           if [[ "${DIY_P5_SH}" == *"false"* ]]; then
             echo "不需要执行此选项"
