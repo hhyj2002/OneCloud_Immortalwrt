@@ -1,72 +1,78 @@
 #!/bin/bash
 
-if [ ! -z "$1" ];then
-    ip="$1"
-fi
-
-if [ ! -z "$2" ];then
-    ip_server="$2"
-fi
-
-#默认主路由
+# 默认主路由
 rm -rf ./files/etc/config/network
 
-#如果files/etc/config文件夹不存在，创建文件夹
+# 如果 files/etc/config 文件夹不存在，创建文件夹
 if [ ! -d "./files/etc/config" ]; then
   mkdir -p ./files/etc/config
 fi
 
-# 使用正则表达式校验IP地址格式是否符合规范
-if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-	echo "玩客云IP地址 $ip 符合规范。"
-else
-	echo "玩客云IP地址 $ip 不符合规范。"
-	exit 1
-fi
-		  
-if [[ $ip_server =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-	echo "config interface 'loopback'
+ip="$1"
+ip_server="$2"
+
+# 判断是否传入了合法的 IP（针对你可能未来还需要静态 IP 的情况）
+if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ $ip_server =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "玩客云IP地址 $ip 符合规范，将使用静态 IP 模式。"
+    cat > files/etc/config/network <<EOF
+config interface 'loopback'
+	option device 'lo'
 	option proto 'static'
 	option ipaddr '127.0.0.1'
 	option netmask '255.0.0.0'
-	option device 'lo'
 
 config globals 'globals'
+	option packet_steering '1'
+	option ula_prefix 'fd3d:7b8e:953e::/48'
 
 config interface 'lan'
+	option device 'br-lan'
 	option proto 'static'
 	option ipaddr '$ip'
 	option netmask '255.255.255.0'
-	option ip6assign '64'
-	option device 'br-lan'
+	option ip6assign '60'
 	option gateway '$ip_server'
-	option delegate '0'
-	option ip6ifaceid 'eui64'
 	list dns '$ip_server'
 
-config interface 'utun'
-	option proto 'none'
-	option ifname 'utun'
-	option device 'utun'
-	option auto '0'
-
-config interface 'docker'
-	option proto 'none'
-	option auto '0'
-	option device 'docker0'
-
-config device
-	option type 'bridge'
-	option name 'docker0'
+config interface 'lan6'
+	option device 'br-lan'
+	option proto 'dhcpv6'
+	option reqaddress 'try'
+	option reqprefix 'auto'
 
 config device
 	option name 'br-lan'
 	option type 'bridge'
 	list ports 'eth0'
-">files/etc/config/network
+EOF
+
 else
-	echo "主路由IP地址 $ip 不符合规范。"
-	exit 1
+    # 如果没传参数（例如通过 Actions 编译时），则使用 DHCP 客户端模式
+    echo "未提供合法 IP 参数，使用 DHCP 客户端模式（不对外提供 DHCP 服务）。"
+    cat > files/etc/config/network <<EOF
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config globals 'globals'
+	option packet_steering '1'
+	option ula_prefix 'fd3d:7b8e:953e::/48'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'dhcp'
+
+config interface 'lan6'
+	option device 'br-lan'
+	option proto 'dhcpv6'
+	option reqaddress 'try'
+	option reqprefix 'auto'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+EOF
 fi
-
-
