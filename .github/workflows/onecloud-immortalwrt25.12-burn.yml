@@ -230,8 +230,7 @@ jobs:
 
     - name: 获取内核版本
       working-directory: ./openwrt
-      run: |
-         
+      run: |     
         # 或者更精确地读取生成的 vermagic（包含完整版本号，如 6.6.32）
         if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
           KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
