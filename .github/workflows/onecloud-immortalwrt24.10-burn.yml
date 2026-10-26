@@ -228,10 +228,10 @@ jobs:
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
-          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        KERNEL_VER=$(grep -m 1 'LINUX_KERNEL_VERSION' target/linux/amlogic/Makefile | cut -d'=' -f2 | tr -d ' ')
+        if [ -z "$KERNEL_VER" ]; then
+          KERNEL_VER="unknown"
         fi
-        
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
         echo "获取到的内核版本为: $KERNEL_VER"
 
@@ -244,9 +244,9 @@ jobs:
       run: |
         cd openwrt
         
-        KERNEL_VER="unknown"
-        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
-          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        KERNEL_VER=$(grep -m 1 'LINUX_KERNEL_VERSION' target/linux/amlogic/Makefile | cut -d'=' -f2 | tr -d ' ')
+        if [ -z "$KERNEL_VER" ]; then
+          KERNEL_VER="unknown"
         fi
         
         mkdir outfile
