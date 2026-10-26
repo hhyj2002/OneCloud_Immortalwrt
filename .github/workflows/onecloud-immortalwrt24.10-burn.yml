@@ -22,12 +22,12 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-24.10
   FEEDS_CONF: feeds.conf.default
-  # 注意：确保你的 GitHub 仓库里有这个同名的配置文件
+  # 确保仓库存在此文件
   CONFIG_FILE: Config/onecloud-immortalwrt24.10-burn.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  # 关闭 openclash 注入
+  # 关闭 openclash 注入脚本
   DIY_P4_SH: Scripts/false
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
@@ -118,7 +118,6 @@ jobs:
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=amlogic6.6" >> $GITHUB_ENV
-          # 统一修正了配置文件路径，不再指向 quicker-amlogic.config
           echo "OWRT_CFG=Config/onecloud-immortalwrt24.10-burn.config" >> $GITHUB_ENV
 
     - name: 克隆源仓库
@@ -178,8 +177,6 @@ jobs:
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
 
-          # 【已移除】原有的 Aria2 chmod 遗留代码
-
           rm -rf ./tmp* ./.config*
           [ -e $GITHUB_WORKSPACE/$OWRT_CFG ] && mv $GITHUB_WORKSPACE/$OWRT_CFG .config
 
@@ -200,7 +197,12 @@ jobs:
           # amlogic6.6 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
-          $GITHUB_WORKSPACE/$DIY_P4_SH
+          # 修复 exit 127：检查是否需要执行 DIY_P4_SH
+          if [[ "${DIY_P4_SH}" == *"false"* ]]; then
+            echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
+          else
+            $GITHUB_WORKSPACE/$DIY_P4_SH
+          fi
 
           if [[ "${DIY_P5_SH}" == *"false"* ]]; then
             echo "不需要执行此选项"
