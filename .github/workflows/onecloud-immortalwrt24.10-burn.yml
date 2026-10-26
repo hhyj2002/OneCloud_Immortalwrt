@@ -159,6 +159,7 @@ jobs:
     - name: 加载自定义配置
       working-directory: ./openwrt
       run: |
+          # 已移除下载 banner 的命令，由 Settings.sh 接管
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
           if [[ "${DIY_P3_SH}" == *"false"* ]]; then
@@ -196,7 +197,7 @@ jobs:
           # amlogic6.6 不属于 docker 类型，执行 else 分支
           rm -rf ./files/etc/config/dhcp
 
-          # 修复 exit 127：检查是否需要执行 DIY_P4_SH
+          # 检查是否需要执行 DIY_P4_SH
           if [[ "${DIY_P4_SH}" == *"false"* ]]; then
             echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
           else
@@ -249,11 +250,13 @@ jobs:
         fi
         
         mkdir outfile
+        # 加入容错判断，只有存在 .tar 才复制
         for f in bin/targets/*/*/*.tar; do
-          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+          [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
         done
+        # 加入容错判断，只有存在 .xz 才复制
         for f in bin/targets/*/*/*.xz; do
-          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+          [ -f "$f" ] && cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
         done
         
         cp -rf .config ./outfile/config.txt
@@ -261,8 +264,11 @@ jobs:
 
         cd outfile
 
-        if [[ $REPO_URL == *"immortalwrt"* ]]; then
-          gzip *.tar
+        # 只有存在 .tar 文件才进行 gzip
+        if ls *.tar >/dev/null 2>&1; then
+          if [[ $REPO_URL == *"immortalwrt"* ]]; then
+            gzip *.tar
+          fi
         fi
 
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
