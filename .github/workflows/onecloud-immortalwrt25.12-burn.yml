@@ -248,9 +248,22 @@ jobs:
       id: organize
       run: |
         cd openwrt
+        
+        # 提取内核版本
+        KERNEL_VER="unknown"
+        if [ -f build_dir/target-*/linux-*/linux-*/.vermagic ]; then
+          KERNEL_VER=$(cat build_dir/target-*/linux-*/linux-*/.vermagic | awk '{print $1}' | cut -d'~' -f1)
+        fi
+        
         mkdir outfile
-        cp -rf bin/targets/*/*/*.tar ./outfile
-        cp -rf bin/targets/*/*/*.xz ./outfile
+        # 重命名文件，加入内核版本
+        for f in bin/targets/*/*/*.tar; do
+          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+        done
+        for f in bin/targets/*/*/*.xz; do
+          cp -f "$f" ./outfile/OneCloud_${KERNEL_VER}_$(basename $f)
+        done
+        
         cp -rf .config ./outfile/config.txt
         rm -rf bin/targets/*/*/packages
 
@@ -267,7 +280,8 @@ jobs:
         export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
         echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
         echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
-
+    
+   
     - name: 上传直刷固件
       uses: ncipollo/release-action@v1
       with:
