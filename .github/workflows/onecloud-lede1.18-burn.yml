@@ -70,7 +70,7 @@ jobs:
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           
-          # LEDE 源码不适用 ImmortalWrt 的专属脚本，改用原生依赖安装
+          # LEDE 源码使用原生依赖安装
           sudo -E apt -yqq install build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses5-dev libncursesw5-dev libssl-dev libelf-dev ecj fastjar \
             rsync swig unzip zlib1g-dev file wget python3 python3-pip python3-setuptools \
@@ -121,14 +121,20 @@ jobs:
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
 
         cd openwrt
-        # 核心修复：先删掉源码自带的 amlogic 目录，防止覆盖冲突
+        # 1. 先删掉源码自带的 amlogic 目录，防止覆盖冲突
         rm -rf target/linux/amlogic
         
+        # 2. 移动我们的专属目录
         mv $GITHUB_WORKSPACE/lede6.18/target/linux/amlogic target/linux
         chmod -Rf 755 target/linux/amlogic
+        
+        # 3. 【核心修复】地毯式清理会引发报错的旧通用补丁 (加速、流控等)
+        echo "正在清理冲突的旧内核补丁..."
+        rm -f target/linux/generic/hack-6.18/95*-*.patch
+        rm -f target/linux/generic/hack-6.18/64*-*.patch
+        
         ls -l target/linux/amlogic
         echo "amlogic6.18"
-
 
     - name: 启动缓存[第二次起生效]
       uses: rmoyulong/cachewrtbuild@main
@@ -202,18 +208,14 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        # 从编译生成的 kernel ipk 包名中精准抓取三级版本号
-        KERNEL_IPK=$(find bin/targets/ -name "kernel_*.ipk" | head -n 1)
+        KERNEL_PKG=$(find bin/targets/ \( -name "kernel_*.ipk" -o -name "kernel-*.apk" \) | head -n 1)
         
-        if [ -n "$KERNEL_IPK" ]; then
-          # 提取类似 6.6.159 的版本号
-          KERNEL_VER=$(echo "$KERNEL_IPK" | grep -oP 'kernel_\K[0-9]+\.[0-9]+\.[0-9]+')
+        if [ -n "$KERNEL_PKG" ]; then
+          KERNEL_VER=$(echo "$KERNEL_PKG" | grep -oP 'kernel[-_]\K[0-9]+\.[0-9]+\.[0-9]+')
         else
-          # 如果因为某些原因没找到，降级使用大版本号（6.6 或 6.12）
           KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
         fi
         
