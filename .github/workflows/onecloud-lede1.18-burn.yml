@@ -198,18 +198,28 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
+
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        VMAGIC=$(find build_dir -name ".vermagic" | head -n 1)
-        if [ -n "$VMAGIC" ]; then
-          KERNEL_VER=$(cat "$VMAGIC" | awk '{print $1}' | cut -d'~' -f1)
+        # 从编译生成的 kernel ipk 包名中精准抓取三级版本号
+        KERNEL_IPK=$(find bin/targets/ -name "kernel_*.ipk" | head -n 1)
+        
+        if [ -n "$KERNEL_IPK" ]; then
+          # 提取类似 6.6.159 的版本号
+          KERNEL_VER=$(echo "$KERNEL_IPK" | grep -oP 'kernel_\K[0-9]+\.[0-9]+\.[0-9]+')
         else
+          # 如果因为某些原因没找到，降级使用大版本号（6.6 或 6.12）
+          KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
+        fi
+        
+        if [ -z "$KERNEL_VER" ]; then
           KERNEL_VER="unknown"
         fi
+        
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
         echo "获取到的内核版本为: $KERNEL_VER"
-          
+            
     - name: 制作直刷包
       run: |
           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
