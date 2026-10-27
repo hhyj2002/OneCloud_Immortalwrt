@@ -4,6 +4,7 @@ set -x
 sudo apt update && sudo apt install -y android-sdk-libsparse-utils
 ver="v0.3.2"
 
+# 下载打包工具和原版底包
 curl -L -o ./AmlImg https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
 chmod +x ./AmlImg
 curl -L -o ./uboot.img https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
@@ -13,18 +14,14 @@ if [ ! -f "uboot.img" ] || [ ! -f "AmlImg" ]; then
   exit 1
 fi
 
+# 解压底包，会生成 burn/ 目录及里面的各种 USB/PARTITION 文件
 ./AmlImg unpack ./uboot.img burn/
 
-# ========= 暴力侦察 =========
-echo "=== 开始扫描 bin/targets 目录 ==="
-find openwrt/bin/targets/ -type f
-echo "================================"
-
-# 自动匹配任何可能带有 rootfs / tar / gz 的文件（排除掉 sha 校验文件和内核文件）
-rootfs_tar=$(find openwrt/bin/targets/ -type f \( -name "*.tar.gz" -o -name "*.tar" -o -name "*.rootfs*" \) ! -name "*kernel*" ! -name "*sha256*" | head -n 1)
+# ========= 寻找 rootfs 并挂载提取 =========
+rootfs_tar=$(find openwrt/bin/targets/ -type f \( -name "*.tar.gz" -o -name "*.tar" \) ! -name "*kernel*" | head -n 1)
 
 if [ -z "$rootfs_tar" ]; then
-    echo "❌ 找不到根文件系统包，请把上面扫描到的文件列表发给我。"
+    echo "❌ 找不到根文件系统包"
     exit 1
 fi
 
@@ -37,38 +34,35 @@ sudo mkfs.ext4 ${boot_img}
 sudo mkdir rootfs_mnt
 sudo mount ${boot_img} rootfs_mnt
 
-# 不管三七二十一，看后缀解压
 if [[ "$rootfs_tar" == *.gz ]]; then
-    echo "正在解压 .gz 文件..."
-    sudo tar -xzf "$rootfs_tar" -C rootfs_mnt || sudo gunzip -c "$rootfs_tar" | sudo tar -xf - -C rootfs_mnt
+    sudo tar -xzf "$rootfs_tar" -C rootfs_mnt
 else
-    echo "正在解压 .tar 文件..."
-    sudo tar -xf "$rootfs_tar" -C rootfs_mnt || sudo cp -rf "$rootfs_tar"/* rootfs_mnt/ || sudo cp -rf "$rootfs_tar" rootfs_mnt/
+    sudo tar -xf "$rootfs_tar" -C rootfs_mnt
 fi
 
 sudo sync
 sudo umount rootfs_mnt
 
+# 转换为 Android 稀疏格式
 sudo img2simg ${boot_img} burn/rootfs.simg
+# 把整个盘也作为 boot.simg（或者你有单独的内核分区就放内核）
 sudo img2simg ${boot_img} burn/boot.simg
 
 sudo rm -rf ${boot_img} rootfs_mnt
 
-cat <<EOF > burn/commands.txt
-PARTITION:boot:sparse:boot.simg
-PARTITION:rootfs:sparse:rootfs.simg
-EOF
+# ========= 【核心修复】 =========
+# 不要覆盖原有的 commands.txt，而是追加。原版指令用于加载 UBOOT 等，我们追加系统指令。
+echo "PARTITION:boot:sparse:boot.simg" >> burn/commands.txt
+echo "PARTITION:rootfs:sparse:rootfs.simg" >> burn/commands.txt
 
-# 直接生成在最外层目录，和你的 yml 搜索路径完美匹配
+# 打包
 burnimg="openwrt/bin/targets/OneCloud.burn.img"
-
 ./AmlImg pack $burnimg burn/
 
-# 直接针对生成的文件进行压缩和 sha256 计算
-if [ -f "$burnimg" ]; then
-  sha256sum "$burnimg" >"${burnimg}.sha"
-  xz -9 --threads=0 --compress "$burnimg"
-else
-  echo "❌ 打包失败，未生成 $burnimg"
-  exit 1
-fi
+# 压缩
+for f in openwrt/bin/targets/*.burn.img; do
+  if [ -f "$f" ]; then
+    sha256sum "$f" >"${f}.sha"
+    xz -9 --threads=0 --compress "$f"
+  fi
+done
