@@ -11,7 +11,7 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-25.12
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
+  CONFIG_FILE: Config/onecloud-immortalwrt25.12-burn.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
@@ -21,7 +21,7 @@ env:
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
-  OWRT_CFG: Config/onecloud-immortalwrt25.12.config
+  OWRT_CFG: Config/onecloud-immortalwrt25.12-burn.config
   TZ: Asia/Shanghai
 
 permissions:
@@ -96,7 +96,7 @@ jobs:
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=amlogic6.12" >> $GITHUB_ENV
-          echo "OWRT_CFG=Config/onecloud-immortalwrt25.12.config" >> $GITHUB_ENV
+          echo "OWRT_CFG=Config/onecloud-immortalwrt25.12-burn.config" >> $GITHUB_ENV
 
     - name: 克隆源仓库
       working-directory: /workdir
