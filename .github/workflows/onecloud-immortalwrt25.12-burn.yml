@@ -181,8 +181,6 @@ jobs:
           # 调用 edit_files.sh 并传入 IP 参数！
           $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
 
-          rm -rf ./files/etc/config/dhcp
-
           if [[ "${DIY_P4_SH}" == *"false"* ]]; then
             echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
           else
