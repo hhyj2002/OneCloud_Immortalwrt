@@ -1,71 +1,72 @@
 #!/bin/bash
-set -e # 遇到错误立即退出
+set -x # 开启调试打印，可以在日志里看到执行过程
 
 sudo apt update && sudo apt install -y android-sdk-libsparse-utils
 ver="v0.3.2"
 
-# 增加重试机制，防止网络波动导致下载失败
-curl -L -o ./AmlImg --retry 3 https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
+# 下载工具
+curl -L -o ./AmlImg https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
 chmod +x ./AmlImg
+curl -L -o ./uboot.img https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
 
-curl -L -o ./uboot.img --retry 3 https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
-./AmlImg unpack ./uboot.img burn/
-
-# 兼容处理：寻找并解压 .gz
-gz_files=$(ls openwrt/bin/targets/*/*/*.gz 2>/dev/null || true)
-if [ -n "$gz_files" ]; then
-    gunzip $gz_files
+if [ ! -f "uboot.img" ] || [ ! -f "AmlImg" ]; then
+  echo "❌ 下载工具失败"
+  exit 1
 fi
 
-diskimg=$(ls openwrt/bin/targets/*/*/*.img 2>/dev/null | grep -v "burn.img" | head -n 1)
-if [ -z "$diskimg" ]; then
-    echo "❌ 错误: 在 openwrt/bin/targets/ 中找不到 .img 文件，编译可能失败了。"
+./AmlImg unpack ./uboot.img burn/
+
+# ========= 核心修改：寻找根文件系统并自己造镜像 =========
+# 寻找编译生成的 rootfs tar 压缩包
+rootfs_tar=$(find openwrt/bin/targets/ -name "*rootfs.tar.gz" | head -n 1)
+
+if [ -z "$rootfs_tar" ]; then
+    echo "❌ 找不到 rootfs.tar.gz，编译肯定失败了，请检查上方日志。"
     exit 1
 fi
 
-echo "找到磁盘镜像: $diskimg"
-sudo modprobe loop || true
-loop=$(sudo losetup --find --show --partscan "$diskimg")
+echo "✅ 找到根文件系统: $rootfs_tar"
 
-img_ext="openwrt.img"
-img_mnt="xd"
-rootfs_mnt="img"
-boot_img=${img_ext}
-boot_img_mnt=${img_mnt}
-rootfs_img_mnt=${rootfs_mnt}
-
-sudo rm -rf ${boot_img} ${boot_img_mnt} ${rootfs_img_mnt}
+# 制作一个 2GB 的空磁盘镜像
+boot_img="openwrt.img"
+sudo rm -rf ${boot_img} rootfs_mnt
 sudo dd if=/dev/zero of=${boot_img} bs=1M count=2000
 sudo mkfs.ext4 ${boot_img}
-sudo mkdir ${boot_img_mnt} ${rootfs_img_mnt}
-sudo mount ${boot_img} ${boot_img_mnt}
-sudo mount ${loop}p2 ${rootfs_img_mnt}
+sudo mkdir rootfs_mnt
+sudo mount ${boot_img} rootfs_mnt
 
-cd ${rootfs_img_mnt}
-sudo cp -r * ../${boot_img_mnt}
-cd ..
+# 解压 rootfs 到空磁盘里
+sudo tar -xzf "$rootfs_tar" -C rootfs_mnt
 sudo sync
-sudo umount ${boot_img_mnt} ${rootfs_img_mnt}
+sudo umount rootfs_mnt
 
-sudo img2simg ${loop}p1 burn/boot.simg
+# 使用 img2simg 转换为稀疏镜像
 sudo img2simg ${boot_img} burn/rootfs.simg
+# 玩客云标准的直刷包逻辑
+sudo img2simg ${boot_img} burn/boot.simg
 
-sudo losetup -d $loop
-sudo rm -rf *.img
-rm -rf ${boot_img_mnt} ${rootfs_img_mnt}
+# 清理文件
+sudo rm -rf ${boot_img} rootfs_mnt
 
-cat <<EOF >>burn/commands.txt
+# 写入分区表指令
+cat <<EOF > burn/commands.txt
 PARTITION:boot:sparse:boot.simg
 PARTITION:rootfs:sparse:rootfs.simg
 EOF
 
-prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
-burnimg=${prefix}.burn.img
+# 打包
+prefix=$(basename $(dirname "$rootfs_tar"))_$(basename "$rootfs_tar" .tar.gz | sed 's/-rootfs//')
+burnimg="openwrt/bin/targets/${prefix}.burn.img"
 ./AmlImg pack $burnimg burn/
 
-for f in openwrt/bin/targets/*/*/*.burn.img; do
-  sha256sum "$f" >"${f}.sha"
-  xz -9 --threads=0 --compress "$f"
+# 压缩并计算哈希
+for f in openwrt/bin/targets/*.burn.img; do
+  if [ -f "$f" ]; then
+    sha256sum "$f" >"${f}.sha"
+    xz -9 --threads=0 --compress "$f"
+  fi
 done
 
-sudo rm -rf openwrt/bin/targets/*/*/*.img openwrt/bin/targets/*/*/*.gz
+# 把生成的 burn.img.xz 移动到 targets 目录下，方便 yml 抓取
+mv openwrt/bin/targets/*/*.burn.img.xz openwrt/bin/targets/ 2>/dev/null || true
+mv openwrt/bin/targets/*.burn.img.xz openwrt/bin/targets/ 2>/dev/null || true
