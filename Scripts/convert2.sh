@@ -14,44 +14,56 @@ if [ ! -f "uboot.img" ] || [ ! -f "AmlImg" ]; then
   exit 1
 fi
 
-# 解压底包，会生成 burn/ 目录及里面的各种 USB/PARTITION 文件
+# 解压底包
 ./AmlImg unpack ./uboot.img burn/
 
-# ========= 寻找 rootfs 并挂载提取 =========
-rootfs_tar=$(find openwrt/bin/targets/ -type f \( -name "*.tar.gz" -o -name "*.tar" \) ! -name "*kernel*" | head -n 1)
+# ========= 寻找可用的系统镜像 =========
+echo "=== 开始扫描 bin/targets 目录 ==="
+find openwrt/bin/targets/ -type f
+echo "================================"
 
-if [ -z "$rootfs_tar" ]; then
-    echo "❌ 找不到根文件系统包"
-    exit 1
-fi
+# 1. 优先找现成的 .img 文件（25.12 默认产出这个）
+diskimg=$(find openwrt/bin/targets/ -type f -name "*.img" ! -name "*.burn.img" | head -n 1)
 
-echo "✅ 找到根文件系统: $rootfs_tar"
-
-boot_img="openwrt.img"
-sudo rm -rf ${boot_img} rootfs_mnt
-sudo dd if=/dev/zero of=${boot_img} bs=1M count=2000
-sudo mkfs.ext4 ${boot_img}
-sudo mkdir rootfs_mnt
-sudo mount ${boot_img} rootfs_mnt
-
-if [[ "$rootfs_tar" == *.gz ]]; then
-    sudo tar -xzf "$rootfs_tar" -C rootfs_mnt
+if [ -n "$diskimg" ]; then
+    echo "✅ 找到现成的磁盘镜像: $diskimg"
+    # 直接打包现有镜像
+    sudo img2simg ${diskimg} burn/rootfs.simg
+    sudo img2simg ${diskimg} burn/boot.simg
 else
-    sudo tar -xf "$rootfs_tar" -C rootfs_mnt
+    # 2. 如果没找到 .img，退回去找 .tar.gz 自己造盘
+    rootfs_tar=$(find openwrt/bin/targets/ -type f \( -name "*.tar.gz" -o -name "*.tar" \) ! -name "*kernel*" | head -n 1)
+    
+    if [ -z "$rootfs_tar" ]; then
+        echo "❌ 既没找到 .img 也没找到 .tar.gz，请检查上方扫描日志。"
+        exit 1
+    fi
+    
+    echo "✅ 找到根文件系统包: $rootfs_tar，正在自行造盘..."
+    boot_img="openwrt.img"
+    sudo rm -rf ${boot_img} rootfs_mnt
+    sudo dd if=/dev/zero of=${boot_img} bs=1M count=2000
+    sudo mkfs.ext4 ${boot_img}
+    sudo mkdir rootfs_mnt
+    sudo mount ${boot_img} rootfs_mnt
+
+    if [[ "$rootfs_tar" == *.gz ]]; then
+        sudo tar -xzf "$rootfs_tar" -C rootfs_mnt
+    else
+        sudo tar -xf "$rootfs_tar" -C rootfs_mnt
+    fi
+
+    sudo sync
+    sudo umount rootfs_mnt
+
+    # 转换为 Android 稀疏格式
+    sudo img2simg ${boot_img} burn/rootfs.simg
+    sudo img2simg ${boot_img} burn/boot.simg
+    sudo rm -rf ${boot_img} rootfs_mnt
 fi
-
-sudo sync
-sudo umount rootfs_mnt
-
-# 转换为 Android 稀疏格式
-sudo img2simg ${boot_img} burn/rootfs.simg
-# 把整个盘也作为 boot.simg（或者你有单独的内核分区就放内核）
-sudo img2simg ${boot_img} burn/boot.simg
-
-sudo rm -rf ${boot_img} rootfs_mnt
 
 # ========= 【核心修复】 =========
-# 不要覆盖原有的 commands.txt，而是追加。原版指令用于加载 UBOOT 等，我们追加系统指令。
+# 追加系统指令，保留原版 UBOOT 等指令
 echo "PARTITION:boot:sparse:boot.simg" >> burn/commands.txt
 echo "PARTITION:rootfs:sparse:rootfs.simg" >> burn/commands.txt
 
