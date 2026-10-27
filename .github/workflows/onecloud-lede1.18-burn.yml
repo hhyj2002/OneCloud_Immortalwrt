@@ -5,6 +5,17 @@ name: 一站式精简onecloud-lede6.18直刷包
 
 on:
   workflow_dispatch:
+    inputs:
+      OP_IP:
+        description: '玩客云IP选项 (默认静态IP，进后台后可改DHCP)'
+        required: true
+        default: '192.168.8.59'
+        type: string
+      SERVER_IP:
+        description: '主路由IP选项'
+        required: true
+        default: '192.168.8.1'
+        type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -22,6 +33,8 @@ env:
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.18
   OWRT_CFG: Config/onecloud-lede6.18-burn.config
+  OWRT_IP: ${{ github.event.inputs.OP_IP }}
+  OWRT_SERVER_IP: ${{ github.event.inputs.SERVER_IP }}
   TZ: Asia/Shanghai
 
 permissions:
@@ -70,7 +83,6 @@ jobs:
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           
-          # LEDE 源码使用原生依赖安装
           sudo -E apt -yqq install build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses5-dev libncursesw5-dev libssl-dev libelf-dev ecj fastjar \
             rsync swig unzip zlib1g-dev file wget python3 python3-pip python3-setuptools \
@@ -96,6 +108,8 @@ jobs:
           echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
           echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
+          echo "OWRT_IP=$OWRT_IP" >> $GITHUB_ENV
+          echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
@@ -105,188 +119,4 @@ jobs:
 
     - name: 克隆源仓库
       working-directory: /workdir
-      run: |
-        df -hT $PWD
-        git clone $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: 检查脚本
-      run: |
-        cd ./Scripts
-        dos2unix ./*.sh
-        chmod +x ./*.sh
-  
-    - name: 设置soc (amlogic6.18)
-      run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-
-        cd openwrt
-        # 1. 先删掉源码自带的 amlogic 目录，防止覆盖冲突
-        rm -rf target/linux/amlogic
-        
-        # 2. 移动我们的专属目录
-        mv $GITHUB_WORKSPACE/lede6.18/target/linux/amlogic target/linux
-        chmod -Rf 755 target/linux/amlogic
-        
-        # 3. 【核心修复】地毯式清理会引发报错的旧通用补丁 (加速、流控等)
-        echo "正在清理冲突的旧内核补丁..."
-        rm -f target/linux/generic/hack-6.18/95*-*.patch
-        rm -f target/linux/generic/hack-6.18/64*-*.patch
-        
-        ls -l target/linux/amlogic
-        echo "amlogic6.18"
-
-    - name: 启动缓存[第二次起生效]
-      uses: rmoyulong/cachewrtbuild@main
-      with:
-        ccache: 'true'
-        prefix: ${{ github.workspace }}/openwrt
-        mixkey: amlogic6.18/tree/${{ env.OWRT_BRANCH }}?device=${{ env.OWRT_CFG }}
-
-    - name: 安装订阅源
-      run: |
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
-          echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-    - name: 加载自定义配置
-      working-directory: ./openwrt
-      run: |
-          $GITHUB_WORKSPACE/$DIY_P2_SH
-
-          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
-          fi
-
-    - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
-      working-directory: ./openwrt
-      run: |
-          dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
-          dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
-          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
-          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
-          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
-
-          rm -rf ./tmp* ./.config*
-          [ -e $GITHUB_WORKSPACE/$OWRT_CFG ] && mv $GITHUB_WORKSPACE/$OWRT_CFG .config
-
-          if [ ! -d "./files" ]; then
-            mkdir ./files
-          fi
-          cp -rf $GITHUB_WORKSPACE/$OWRT_FILES/* ./files
-
-          if [ ! -f files/etc/rc.local ]; then
-            echo "rc.local文件不存在！"
-          else
-            cat files/etc/rc.local
-          fi
-
-          $GITHUB_WORKSPACE/$DIY_P6_SH
-
-          rm -rf ./files/etc/config/dhcp
-
-          if [[ "${DIY_P4_SH}" == *"false"* ]]; then
-            echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
-          else
-            $GITHUB_WORKSPACE/$DIY_P4_SH
-          fi
-
-    - name: 下载编译环境
-      working-directory: ./openwrt
-      run: |
-          make defconfig
-          make download -j$(( $(nproc) * 2 ))
-          find dl -size -1k -exec rm -f {} \;
-
-    - name: 编译固件
-      working-directory: ./openwrt
-      run: |
-          echo -e "$(nproc) thread compile"
-          make -j$(( $(nproc) + 1 )) || make -j1 V=s
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
-    - name: 获取内核版本
-      working-directory: ./openwrt
-      run: |     
-        KERNEL_PKG=$(find bin/targets/ \( -name "kernel_*.ipk" -o -name "kernel-*.apk" \) | head -n 1)
-        
-        if [ -n "$KERNEL_PKG" ]; then
-          KERNEL_VER=$(echo "$KERNEL_PKG" | grep -oP 'kernel[-_]\K[0-9]+\.[0-9]+\.[0-9]+')
-        else
-          KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
-        fi
-        
-        if [ -z "$KERNEL_VER" ]; then
-          KERNEL_VER="unknown"
-        fi
-        
-        echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
-        echo "获取到的内核版本为: $KERNEL_VER"
-            
-    - name: 制作直刷包
-      run: |
-          chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
-          $GITHUB_WORKSPACE/Scripts/convert2.sh || true
-
-    - name: 整理固件
-      id: organize
-      run: |
-        cd openwrt
-        mkdir -p outfile
-        
-        for f in bin/targets/*.burn.img.xz; do
-          if [ -f "$f" ]; then
-            BASE_NAME=$(basename "$f")
-            cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
-          fi
-        done
-        
-        cp -rf .config ./outfile/config.txt || true
-
-        cd outfile
-        if ls *.xz >/dev/null 2>&1; then
-          echo "=== 检查最终上传的固件 ==="
-          ls -l
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        else
-          echo "❌ 错误：没有找到任何 .burn.img.xz 固件！"
-          exit 1
-        fi
-        echo "::set-output name=status::success"
-
-        export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
-        export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
-        echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
-        echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
-    
-    - name: 上传直刷固件
-      uses: ncipollo/release-action@v1
-      with:
-        allowUpdates: true
-        token: ${{ secrets.GITHUB_TOKEN }}
-        tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
-        body: |
-          自用玩客云一站式直刷固件！
-          请使用双USB公头线刷机！
-          ==========🧊 基本信息 🧊==========
-          💻 固件源码： ${{env.OWRT_SOURCE}}
-          💝 源码分支： ${{ env.OWRT_BRANCH }}
-          🧠 内核版本： ${{ env.KERNEL_VER }}
-          🔑 默认密码： password
-          🌐 默认地址： 自动获取 (DHCP)
-        artifacts: ${{ env.FIRMWARE }}/*
-  
-    - name: 清理Releases
-      uses: rmoyulong/delete-older-releases@master
-      with:
-        keep_latest: 10
-        delete_tags: true
-
-    - name: 清理Workflow运行记录
-      uses: rmoyulong/delete-workflow-runs@main
-      with:
-        retain_days: 0
-        keep_minimum_runs: 1
+      run
