@@ -216,14 +216,14 @@ jobs:
         cd openwrt
         mkdir -p outfile
         
-        for f in bin/targets/*/*/*.burn.img.xz; do
+        for f in bin/targets/*.burn.img.xz; do
           if [ -f "$f" ]; then
             BASE_NAME=$(basename "$f")
             cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
           fi
         done
         
-        cp -rf .config ./outfile/config.txt
+        cp -rf .config ./outfile/config.txt || true
 
         cd outfile
         if ls *.xz >/dev/null 2>&1; then
