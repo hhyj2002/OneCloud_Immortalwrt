@@ -219,8 +219,8 @@ jobs:
           
     - name: 制作直刷包
       run: |
-          chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
-          $GITHUB_WORKSPACE/Scripts/convert2.sh || true
+          chmod +x $GITHUB_WORKSPACE/Scripts/convert2_24.sh
+          $GITHUB_WORKSPACE/Scripts/convert2_24.sh || true
 
     - name: 整理固件
       id: organize
