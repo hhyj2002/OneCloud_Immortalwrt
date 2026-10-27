@@ -115,16 +115,20 @@ jobs:
         cd ./Scripts
         dos2unix ./*.sh
         chmod +x ./*.sh
-
+  
     - name: 设置soc (amlogic6.18)
       run: |
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
 
         cd openwrt
+        # 核心修复：先删掉源码自带的 amlogic 目录，防止覆盖冲突
+        rm -rf target/linux/amlogic
+        
         mv $GITHUB_WORKSPACE/lede6.18/target/linux/amlogic target/linux
         chmod -Rf 755 target/linux/amlogic
         ls -l target/linux/amlogic
         echo "amlogic6.18"
+
 
     - name: 启动缓存[第二次起生效]
       uses: rmoyulong/cachewrtbuild@main
