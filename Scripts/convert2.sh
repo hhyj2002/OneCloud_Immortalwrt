@@ -59,8 +59,8 @@ PARTITION:boot:sparse:boot.simg
 PARTITION:rootfs:sparse:rootfs.simg
 EOF
 
-prefix=$(basename $(dirname "$rootfs_tar"))_$(basename "$rootfs_tar" | cut -d'.' -f1 | sed 's/-rootfs//')
-burnimg="openwrt/bin/targets/${prefix}.burn.img"
+burnimg="openwrt/bin/targets/amlogic/meson8b/OneCloud.burn.img"
+
 ./AmlImg pack $burnimg burn/
 
 for f in openwrt/bin/targets/*.burn.img; do
