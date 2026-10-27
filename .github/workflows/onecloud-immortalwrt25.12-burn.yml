@@ -5,13 +5,24 @@ name: 一站式精简onecloud-immortalwrt25.12 直刷包
 
 on:
   workflow_dispatch:
+    inputs:
+      OP_IP:
+        description: '玩客云IP选项 (默认静态IP，进后台后可改DHCP)'
+        required: true
+        default: '192.168.8.59'
+        type: string
+      SERVER_IP:
+        description: '主路由IP选项'
+        required: true
+        default: '192.168.8.1'
+        type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-25.12
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: Config/onecloud-immortalwrt25.12-burn.config
+  CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
@@ -21,7 +32,9 @@ env:
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
-  OWRT_CFG: Config/onecloud-immortalwrt25.12-burn.config
+  OWRT_CFG: Config/onecloud-immortalwrt25.12.config
+  OWRT_IP: ${{ github.event.inputs.OP_IP }}
+  OWRT_SERVER_IP: ${{ github.event.inputs.SERVER_IP }}
   TZ: Asia/Shanghai
 
 permissions:
@@ -91,12 +104,14 @@ jobs:
           echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
           echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
+          echo "OWRT_IP=$OWRT_IP" >> $GITHUB_ENV
+          echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=amlogic6.12" >> $GITHUB_ENV
-          echo "OWRT_CFG=Config/onecloud-immortalwrt25.12-burn.config" >> $GITHUB_ENV
+          echo "OWRT_CFG=Config/onecloud-immortalwrt25.12.config" >> $GITHUB_ENV
 
     - name: 克隆源仓库
       working-directory: /workdir
@@ -117,7 +132,6 @@ jobs:
 
         cd openwrt
         rm -rf target/linux/amlogic
-        
         mv $GITHUB_WORKSPACE/lede6.12/target/linux/amlogic target/linux
         chmod -Rf 755 target/linux/amlogic
         ls -l target/linux/amlogic
@@ -147,7 +161,7 @@ jobs:
             ${GITHUB_WORKSPACE}/${DIY_P3_SH}
           fi
 
-    - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
+    - name: 自定义IMAGS格式
       working-directory: ./openwrt
       run: |
           dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
@@ -164,13 +178,8 @@ jobs:
           fi
           cp -rf $GITHUB_WORKSPACE/$OWRT_FILES/* ./files
 
-          if [ ! -f files/etc/rc.local ]; then
-            echo "rc.local文件不存在！"
-          else
-            cat files/etc/rc.local
-          fi
-
-          $GITHUB_WORKSPACE/$DIY_P6_SH
+          # 调用 edit_files.sh 并传入 IP 参数！
+          $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
 
           rm -rf ./files/etc/config/dhcp
 
@@ -198,21 +207,15 @@ jobs:
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        # 兼容 apk 和 opkg 两种包后缀
         KERNEL_PKG=$(find bin/targets/ \( -name "kernel_*.ipk" -o -name "kernel-*.apk" \) | head -n 1)
-        
         if [ -n "$KERNEL_PKG" ]; then
-          # 提取类似 6.12.19 的版本号
           KERNEL_VER=$(echo "$KERNEL_PKG" | grep -oP 'kernel[-_]\K[0-9]+\.[0-9]+\.[0-9]+')
         else
-          # 如果没找到，降级使用大版本号
           KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
         fi
-        
         if [ -z "$KERNEL_VER" ]; then
           KERNEL_VER="unknown"
         fi
-        
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
         echo "获取到的内核版本为: $KERNEL_VER"
     
@@ -227,8 +230,7 @@ jobs:
         cd openwrt
         mkdir -p outfile
         
-        # 找到并重命名固件，注意格式命名方式
-        for f in bin/targets/*.burn.img.xz; do
+        for f in $(find bin/targets/ -type f -name "*.burn.img.xz"); do
           if [ -f "$f" ]; then
             BASE_NAME=$(basename "$f")
             cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
@@ -267,7 +269,7 @@ jobs:
           💝 源码分支： ${{ env.OWRT_BRANCH }}
           🧠 内核版本： ${{ env.KERNEL_VER }}
           🔑 默认密码： password
-          🌐 默认地址： 自动获取 (DHCP)
+          🌐 默认地址： ${{env.OWRT_IP}}
         artifacts: ${{ env.FIRMWARE }}/*
   
     - name: 清理Releases
