@@ -24,13 +24,13 @@ on:
       OP_IP:
         description: '玩客云IP选项'     
         required: true
-        default: '192.168.8.59'
+        default: '192.168.31.110'
         type: string        
 
       SERVER_IP:
         description: '主路由IP选项'     
         required: true
-        default: '192.168.8.1'
+        default: '192.168.31.1'
         type: string
         
 env:
@@ -58,13 +58,8 @@ env:
   OWRT_brun_type: ${{ github.event.inputs.brun_type }}
   TZ: Asia/Shanghai
 
-# 修复403权限问题
-permissions:
-  contents: write
-
-
 jobs:
-  build_burn_firmware:
+  build_brun_firmware:
     runs-on: ubuntu-latest
         
     steps:
