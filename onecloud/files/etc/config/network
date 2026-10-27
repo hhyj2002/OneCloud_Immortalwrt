@@ -10,7 +10,11 @@ config globals 'globals'
 
 config interface 'lan'
 	option device 'br-lan'
-	option proto 'dhcp'
+	option proto 'static'
+	option ipaddr '192.168.8.59'
+	option netmask '255.255.255.0'
+	option gateway '192.168.8.1'
+	list dns '192.168.8.1'
 
 config interface 'lan6'
 	option device 'br-lan'
