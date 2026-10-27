@@ -59,16 +59,16 @@ PARTITION:boot:sparse:boot.simg
 PARTITION:rootfs:sparse:rootfs.simg
 EOF
 
-burnimg="openwrt/bin/targets/amlogic/meson8b/OneCloud.burn.img"
+# 直接生成在最外层目录，和你的 yml 搜索路径完美匹配
+burnimg="openwrt/bin/targets/OneCloud.burn.img"
 
 ./AmlImg pack $burnimg burn/
 
-for f in openwrt/bin/targets/*.burn.img; do
-  if [ -f "$f" ]; then
-    sha256sum "$f" >"${f}.sha"
-    xz -9 --threads=0 --compress "$f"
-  fi
-done
-
-mv openwrt/bin/targets/*/*.burn.img.xz openwrt/bin/targets/ 2>/dev/null || true
-mv openwrt/bin/targets/*.burn.img.xz openwrt/bin/targets/ 2>/dev/null || true
+# 直接针对生成的文件进行压缩和 sha256 计算
+if [ -f "$burnimg" ]; then
+  sha256sum "$burnimg" >"${burnimg}.sha"
+  xz -9 --threads=0 --compress "$burnimg"
+else
+  echo "❌ 打包失败，未生成 $burnimg"
+  exit 1
+fi
