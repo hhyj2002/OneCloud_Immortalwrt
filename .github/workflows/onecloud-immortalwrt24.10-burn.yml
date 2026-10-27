@@ -258,7 +258,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
         body: |
-          自用玩客云一站式直刷固件[amlogic6.6]！
+          自用玩客云一站式直刷固件！
           请使用双USB公头线刷机！
           ==========🧊 基本信息 🧊==========
           💻 固件源码： ${{env.OWRT_SOURCE}}
