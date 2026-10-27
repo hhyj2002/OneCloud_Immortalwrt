@@ -5,6 +5,17 @@ name: 一站式精简Onecloud-Immortalwrt24.10直刷包
 
 on:
   workflow_dispatch:
+    inputs:
+      OP_IP:
+        description: '玩客云IP选项 (默认静态IP，进后台后可改DHCP)'
+        required: true
+        default: '192.168.8.59'
+        type: string
+      SERVER_IP:
+        description: '主路由IP选项'
+        required: true
+        default: '192.168.8.1'
+        type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -22,6 +33,8 @@ env:
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.6
   OWRT_CFG: Config/onecloud-immortalwrt24.10-burn.config
+  OWRT_IP: ${{ github.event.inputs.OP_IP }}
+  OWRT_SERVER_IP: ${{ github.event.inputs.SERVER_IP }}
   TZ: Asia/Shanghai
 
 permissions:
@@ -91,6 +104,8 @@ jobs:
           echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
           echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
+          echo "OWRT_IP=$OWRT_IP" >> $GITHUB_ENV
+          echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
           echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
@@ -117,7 +132,6 @@ jobs:
 
         cd openwrt
         rm -rf target/linux/amlogic
-        
         mv $GITHUB_WORKSPACE/lede6.6/target/linux/amlogic target/linux
         chmod -Rf 755 target/linux/amlogic
         ls -l target/linux/amlogic
@@ -147,7 +161,7 @@ jobs:
             ${GITHUB_WORKSPACE}/${DIY_P3_SH}
           fi
 
-    - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
+    - name: 自定义IMAGS格式
       working-directory: ./openwrt
       run: |
           dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
@@ -164,13 +178,8 @@ jobs:
           fi
           cp -rf $GITHUB_WORKSPACE/$OWRT_FILES/* ./files
 
-          if [ ! -f files/etc/rc.local ]; then
-            echo "rc.local文件不存在！"
-          else
-            cat files/etc/rc.local
-          fi
-
-          $GITHUB_WORKSPACE/$DIY_P6_SH
+          # 调用 edit_files.sh 并传入 IP 参数！
+          $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
 
           rm -rf ./files/etc/config/dhcp
 
@@ -198,25 +207,18 @@ jobs:
     - name: 获取内核版本
       working-directory: ./openwrt
       run: |     
-        # 从编译生成的 kernel ipk 包名中精准抓取三级版本号
-        KERNEL_IPK=$(find bin/targets/ -name "kernel_*.ipk" | head -n 1)
-        
-        if [ -n "$KERNEL_IPK" ]; then
-          # 提取类似 6.6.159 的版本号
-          KERNEL_VER=$(echo "$KERNEL_IPK" | grep -oP 'kernel_\K[0-9]+\.[0-9]+\.[0-9]+')
+        KERNEL_PKG=$(find bin/targets/ \( -name "kernel_*.ipk" -o -name "kernel-*.apk" \) | head -n 1)
+        if [ -n "$KERNEL_PKG" ]; then
+          KERNEL_VER=$(echo "$KERNEL_PKG" | grep -oP 'kernel[-_]\K[0-9]+\.[0-9]+\.[0-9]+')
         else
-          # 如果因为某些原因没找到，降级使用大版本号（6.6 或 6.12）
           KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
         fi
-        
         if [ -z "$KERNEL_VER" ]; then
           KERNEL_VER="unknown"
         fi
-        
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
         echo "获取到的内核版本为: $KERNEL_VER"
-         
-
+          
     - name: 制作直刷包
       run: |
           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
@@ -228,7 +230,8 @@ jobs:
         cd openwrt
         mkdir -p outfile
         
-        for f in bin/targets/*.burn.img.xz; do
+        # 兼容寻找子目录和根目录的 .burn.img.xz
+        for f in $(find bin/targets/ -type f -name "*.burn.img.xz"); do
           if [ -f "$f" ]; then
             BASE_NAME=$(basename "$f")
             cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
@@ -267,7 +270,7 @@ jobs:
           💝 源码分支： ${{ env.OWRT_BRANCH }}
           🧠 内核版本： ${{ env.KERNEL_VER }}
           🔑 默认密码： password
-          🌐 默认地址： 自动获取 (DHCP)
+          🌐 默认地址： ${{env.OWRT_IP}}
         artifacts: ${{ env.FIRMWARE }}/*
 
     - name: 清理Releases
@@ -276,7 +279,7 @@ jobs:
         keep_latest: 10
         delete_tags: true
 
-    - name: 清理Workflows
+    - name: 清理Workflow运行记录
       uses: rmoyulong/delete-workflow-runs@main
       with:
         retain_days: 0
