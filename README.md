@@ -30,7 +30,6 @@ ssh armbian输入以下命令 <br>
 4.docker run --restart always --name onecloud -d --network macnet --ip 192.168.31.110 --privileged onecloud_openwrt /sbin/init <br>
 5.修改创建的openwrt 默认lan口配置<br>
 (须结合实际网络情况，不能照抄配置)<br>
-docker exec -it onecloud bash<br>
 vi etc/config/network<br>
 
 [按下键盘 Ins 键切至输入状态]<br>
@@ -49,7 +48,7 @@ option proto 'static'<br>
 option ipaddr '192.168.8.59' # 填写openwrt容器的IP<br>
 option netmask '255.255.255.0'<br>
 option getway '192.168.8.1' # 修改为你自己主路由的IP<br>
-option dns '192.168.31.1' # DNS 可填主路由IP 也可填公共DNS<br>
+option dns '192.168.8.1' # DNS 可填主路由IP 也可填公共DNS<br>
 <br>
 [按下键盘 Esc 键退出输入状态，英文键盘输入 :wq 回车 保存退出]<br>
 <br>
@@ -61,5 +60,4 @@ exit<br>
 ---------------------------------------------------------------------------<br>
 
 启动命令在/etc/rc.local中修改<br>
-下载目录更改需要修改/etc/aria2/aria2.conf.main<br>
 并赋予下载目录777权限<br>
