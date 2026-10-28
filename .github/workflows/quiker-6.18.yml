@@ -156,6 +156,13 @@ jobs:
         
         #git clone -q --single-branch --depth=1 --branch=master https://github.com/coolsnowwolf/lede lede
         #mv ./lede/target/linux/amlogic target/linux
+
+        # 核心修复：清理掉导致编译失败的旧内核补丁
+        rm -f target/linux/generic/hack-6.18/953-net-patch-linux-kernel-to-support-shortcut-fe.patch
+        # 顺便把 95* 和 64* 这种可能冲突的补丁也一起删了，以防万一
+        rm -f target/linux/generic/hack-6.18/95*-*.patch
+        rm -f target/linux/generic/hack-6.18/64*-*.patch
+        
         ls -l target/linux/amlogic
         echo "amlogic6.18"
         #rm -rf ./lede
