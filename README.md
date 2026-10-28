@@ -5,7 +5,7 @@
 请根据自己的需求自行修改<br>
 使用openclash，请使用HTTP(S)&SOCKS5 混合代理端口（默认1092）<br>
 ---------------------------------------------------------------<br>
-登录192.168.31.110
+登录192.168.8.59
 
 ssh登录
 
@@ -50,24 +50,10 @@ config interface 'lan'<br>
 option type 'bridge'<br>
 option ifname 'eth0'<br>
 option proto 'static'<br>
-option ipaddr '192.168.31.110' # 填写openwrt容器的IP<br>
+option ipaddr '192.168.8.59' # 填写openwrt容器的IP<br>
 option netmask '255.255.255.0'<br>
-option getway '192.168.31.1' # 修改为你自己主路由的IP<br>
+option getway '192.168.8.1' # 修改为你自己主路由的IP<br>
 option dns '192.168.31.1' # DNS 可填主路由IP 也可填公共DNS<br>
-<br>
-config interface 'utun'<br>
-option proto 'none'<br>
-option ifname 'utun'<br>
-option device 'utun'<br>
-<br>
-config interface 'docker'<br>
-option ifname 'docker0'<br>
-option proto 'none'<br>
-option auto '0'<br>
-<br>
-config device<br>
-option type 'bridge'<br>
-option name 'docker0'<br>
 <br>
 [按下键盘 Esc 键退出输入状态，英文键盘输入 :wq 回车 保存退出]<br>
 <br>
