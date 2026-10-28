@@ -302,7 +302,7 @@ jobs:
       with:
         allowUpdates: true
         token: ${{ secrets.GITHUB_TOKEN }}
-        tag: OpenWrt_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
+        tag: Oonecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
         body: |
           自用玩客云一站式直刷固件[${{ env.OWRT_brun_type }}]！
           请使用双USB公头线刷机！
