@@ -286,21 +286,30 @@ jobs:
       run: |
         cd openwrt
         mkdir outfile
-        cp -rf bin/targets/*/*/*.tar ./outfile
         cp -rf bin/targets/*/*/*.xz ./outfile
+        cp -rf bin/targets/*/*/*.sha ./outfile
         cp -rf .config ./outfile/config.txt
         rm -rf bin/targets/*/*/packages
         
         cd outfile
-        
-        if [[ $REPO_URL == *"immortalwrt"* ]]; then
-          gzip *.tar
-        fi
-        
+
+        # ===== 重命名固件为目标格式 =====
+        KERNEL_VER=${{ env.KERNEL_VER }}
+        TARGET_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
+        for file in *.burn.img.xz; do
+          [ "$file" = "$TARGET_NAME" ] && continue
+          mv "$file" "$TARGET_NAME"
+          if [ -f "${file}.sha" ]; then
+            mv "${file}.sha" "${TARGET_NAME}.sha"
+            sed -i "s|$file|$TARGET_NAME|" "${TARGET_NAME}.sha"
+          fi
+          echo "✅ 固件重命名为: $TARGET_NAME"
+        done
+        ls -lh
+
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "::set-output name=status::success"
         
-        #信息
         export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
         export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
         echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
@@ -334,4 +343,3 @@ jobs:
       with:
         retain_days: 0
         keep_minimum_runs: 1
-
