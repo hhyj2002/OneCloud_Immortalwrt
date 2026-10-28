@@ -27,7 +27,7 @@ env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: Config/quicker.config
+  CONFIG_FILE: Config/onecloud-lede6.18-burn.config
   #DIY_P1_SH: Scripts/quick.sh
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
@@ -129,7 +129,7 @@ jobs:
           echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
           echo ${{ env.OWRT_brun_type }}
           
-          OWRT_CFG="Config/quicker-amlogic.config"            
+          OWRT_CFG="Config/onecloud-lede6.18-burn.config"            
           echo "OWRT_CFG=$OWRT_CFG" >> $GITHUB_ENV
 
         
