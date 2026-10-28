@@ -1,10 +1,6 @@
 # openwrt-onecloud-玩客云三代(WS1608)<br>
 [![build](https://img.shields.io/github/actions/workflow/status/rmoyulong/OneCloud_OpenWrt/all-quiker.yml)](https://github.com/rmoyulong/OneCloud_OpenWrt/actions/workflows/all-quiker.yml) [![downloads](https://img.shields.io/github/downloads/rmoyulong/OneCloud_OpenWrt/total)](https://github.com/rmoyulong/OneCloud_OpenWrt/releases) [![downloads@latest](https://img.shields.io/github/downloads/rmoyulong/OneCloud_OpenWrt/latest/total)](https://github.com/rmoyulong/OneCloud_OpenWrt/releases/latest)<br>
----------------------------------------------------------------<br>
-使用MosDns作为默认的DNS解析<br>
-请根据自己的需求自行修改<br>
-使用openclash，请使用HTTP(S)&SOCKS5 混合代理端口（默认1092）<br>
----------------------------------------------------------------<br>
+
 登录192.168.8.59
 
 ssh登录
