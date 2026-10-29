@@ -301,36 +301,39 @@ jobs:
       id: organize
       run: |
         cd openwrt
-        mkdir outfile
+        mkdir -p outfile
 
-        # 直刷包 burn.img.xz 及校验文件
-        cp -rf bin/targets/*/*/*.xz ./outfile 2>/dev/null || true
-        cp -rf bin/targets/*/*/*.sha ./outfile 2>/dev/null || true
+        # 1. 先精确找到真正的直刷包和校验文件（忽略任何已经带前缀的，防止死循环）
+        BURN_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
+        
+        # 查找原始的 xz 包
+        for file in $(find bin/targets/ -type f -name "*burn.img.xz" ! -name "OneCloud_*"); do
+          if [ -f "$file" ]; then
+            BASE_NAME=$(basename "$file")
+            cp -f "$file" "./outfile/$BURN_NAME"
+            
+            # 查找与之对应的 sha 包
+            SHA_FILE="${file%.xz}.sha"
+            if [ -f "$SHA_FILE" ]; then
+              NEW_SHA_NAME="${BURN_NAME}.sha"
+              cp -f "$SHA_FILE" "./outfile/$NEW_SHA_NAME"
+              # 替换 sha 文件内部记录的旧文件名
+              sed -i "s|$(basename $SHA_FILE)|$NEW_SHA_NAME|g" "./outfile/$NEW_SHA_NAME"
+            fi
+          fi
+        done
 
-        # 打包前备份的 rootfs 升级包
+        # 2. 清理可能存在的其他无用 sha，防止被一起上传
+        rm -f ./outfile/immortalwrt-*.sha
+
+        # 3. 复制打包前备份的 rootfs 升级包
         cp -rf /workdir/rootfs_backup/* ./outfile/ 2>/dev/null || true
         cp -rf .config ./outfile/config.txt
-        rm -rf bin/targets/*/*/packages
 
         cd outfile
         KERNEL_VER=${{ env.KERNEL_VER }}
 
-        # ===== 1. 重命名直刷包及校验文件 =====
-        BURN_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
-        for file in *.burn.img.xz; do
-          [ -f "$file" ] || continue
-          [ "$file" = "$BURN_NAME" ] && continue
-          
-          mv "$file" "$BURN_NAME"
-          
-          # ===== 同步重命名对应的 sha 文件并修改内部路径 =====
-          if [ -f "${file}.sha" ]; then
-            mv "${file}.sha" "${BURN_NAME}.sha"
-            sed -i "s|$file|$BURN_NAME|g" "${BURN_NAME}.sha"
-          fi
-        done
-
-        # ===== 2. 重命名 rootfs 在线升级包 =====
+        # ===== 4. 重命名 rootfs 在线升级包 =====
         ROOTFS_NAME="OneCloud_${KERNEL_VER}-immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
         for file in *rootfs.tar.gz; do
           [ -f "$file" ] || continue
