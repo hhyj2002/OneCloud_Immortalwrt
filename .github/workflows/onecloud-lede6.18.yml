@@ -182,7 +182,13 @@ jobs:
           chmod -R 755 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/share
           
           rm -rf ./tmp* ./.config*
-          [ -e $GITHUB_WORKSPACE/${{ env.OWRT_CFG }}  ] && mv $GITHUB_WORKSPACE/${{ env.OWRT_CFG }}  .config
+          if [ -f "$GITHUB_WORKSPACE/$OWRT_CFG" ]; then
+              cp -f "$GITHUB_WORKSPACE/$OWRT_CFG" .config
+              echo "✅ 配置文件已成功覆盖: $OWRT_CFG"
+          else
+              echo "❌ 致命错误：找不到配置文件 $GITHUB_WORKSPACE/$OWRT_CFG"
+              exit 1
+          fi
           
           if [ ! -d "./files" ]; then
             mkdir ./files
