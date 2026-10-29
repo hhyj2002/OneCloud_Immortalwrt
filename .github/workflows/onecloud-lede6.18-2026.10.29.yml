@@ -215,8 +215,8 @@ jobs:
           
           make download -j$(( $(nproc) * 2 ))
           find dl -size -1k -exec rm -f {} \;
-
-
+   
+   
     - name: 编译固件
       working-directory: ./openwrt
       run: |
@@ -254,42 +254,41 @@ jobs:
         # 1. 处理直刷包，强制使用标准命名并同步修改 sha
         for f in $(find bin/targets/ -type f -name "*.burn.img.xz"); do
           if [ -f "$f" ]; then
-            # 直接固定最终名字，抛弃原本可能乱七八糟的 BASE_NAME
             NEW_XZ_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
             cp -f "$f" "./outfile/${NEW_XZ_NAME}"
             
-            # 查找对应的 .sha 文件
-            SHA_FILE="${f%.xz}.sha"
+            # 查找对应的 .sha 文件 (兼容 .xz.sha 和 .img.sha)
+            SHA_FILE="${f}.sha"
+            [ -f "$SHA_FILE" ] || SHA_FILE="${f%.xz}.sha"
+            
             if [ -f "$SHA_FILE" ]; then
               NEW_SHA_NAME="${NEW_XZ_NAME}.sha"
               cp -f "$SHA_FILE" "./outfile/$NEW_SHA_NAME"
-              # 修改 .sha 文件内部记录的原始文件名
+              # 修改内部记录的文件名为新名字
               sed -i "s|$(basename $SHA_FILE)|$NEW_SHA_NAME|g" "./outfile/$NEW_SHA_NAME"
+              # 如果内部记录的是 xz 名字，也替换掉
+              sed -i "s|$(basename $f)|$NEW_XZ_NAME|g" "./outfile/$NEW_SHA_NAME"
             fi
           fi
         done
         
-        # 清理可能残留的旧名或错误名的 sha 文件，防止一起被上传
-        rm -f ./outfile/immortalwrt-*.sha ./outfile/OneCloud*.burn.img.sha
+        # 2. 查找并生成 rootfs 在线升级包
+        FOUND_ROOTFS=$(find bin/targets/ -type f -name "*rootfs.tar*" | head -n 1)
+        if [ -n "$FOUND_ROOTFS" ]; then
+          ROOTFS_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-rootfs.tar.gz"
+          if [[ "$FOUND_ROOTFS" == *.gz ]]; then
+            cp -f "$FOUND_ROOTFS" "./outfile/$ROOTFS_NAME"
+          else
+            gzip -c "$FOUND_ROOTFS" > "./outfile/$ROOTFS_NAME"
+          fi
+          echo "✅ 成功找到并处理了 rootfs 文件: $FOUND_ROOTFS"
+        else
+          echo "⚠️ 警告：在 bin/targets/ 中没有找到任何 rootfs.tar 文件！"
+        fi
 
         cp -rf .config ./outfile/config.txt || true
-
         cd outfile
-        KERNEL_VER=${{ env.KERNEL_VER }}
-
-        # ===== 2. 重命名 rootfs 在线升级包 =====
-        ROOTFS_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-rootfs.tar.gz"
-        for file in *rootfs.tar.gz; do
-          [ -f "$file" ] || continue
-          [ "$file" = "$ROOTFS_NAME" ] && continue
-          mv "$file" "$ROOTFS_NAME"
-        done
-        for file in *rootfs.tar; do
-          [ -f "$file" ] || continue
-          gzip -f "$file"
-          mv "${file}.gz" "$ROOTFS_NAME"
-        done
-
+        
         if ls *.xz >/dev/null 2>&1; then
           echo "=== 检查最终上传的固件 ==="
           ls -lh
