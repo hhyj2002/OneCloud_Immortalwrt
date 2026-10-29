@@ -334,7 +334,7 @@ jobs:
         KERNEL_VER=${{ env.KERNEL_VER }}
 
         # ===== 4. 重命名 rootfs 在线升级包 =====
-        ROOTFS_NAME="OneCloud_${KERNEL_VER}-immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
+        ROOTFS_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
         for file in *rootfs.tar.gz; do
           [ -f "$file" ] || continue
           [ "$file" = "$ROOTFS_NAME" ] && continue
