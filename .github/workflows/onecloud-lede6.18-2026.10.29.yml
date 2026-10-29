@@ -183,6 +183,10 @@ jobs:
           rm -rf ./tmp* ./.config*
           [ -e $GITHUB_WORKSPACE/$OWRT_CFG ] && mv $GITHUB_WORKSPACE/$OWRT_CFG .config
 
+          # 强行注入 rootfs 配置，防止被 defconfig 冲掉
+          sed -i 's/^# CONFIG_TARGET_ROOTFS_TARGZ is not set/CONFIG_TARGET_ROOTFS_TARGZ=y/g' .config
+          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+
           if [ ! -d "./files" ]; then
             mkdir ./files
           fi
@@ -191,27 +195,27 @@ jobs:
           # 调用 edit_files.sh 并传入 IP 参数
           $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
 
-          # 注意：这里去掉了 rm -rf ./files/etc/config/dhcp，保留你的 dhcp 文件
-
           if [[ "${DIY_P4_SH}" == *"false"* ]]; then
             echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
           else
             $GITHUB_WORKSPACE/$DIY_P4_SH
           fi
-
+    
     - name: 下载编译环境
       working-directory: ./openwrt
       run: |
-          # 确保生成 rootfs.tar.gz 在线升级包
-          if grep -q "CONFIG_TARGET_ROOTFS_TARGZ" .config; then
-            sed -i 's/^CONFIG_TARGET_ROOTFS_TARGZ.*/CONFIG_TARGET_ROOTFS_TARGZ=y/' .config
-          else
-            echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
-          fi
-
+          # 第一层保险
+          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          
           make defconfig
+          
+          # 第二层保险：defconfig 跑完后如果被自动关闭了，强行改回来
+          sed -i 's/^# CONFIG_TARGET_ROOTFS_TARGZ is not set/CONFIG_TARGET_ROOTFS_TARGZ=y/g' .config
+          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          
           make download -j$(( $(nproc) * 2 ))
           find dl -size -1k -exec rm -f {} \;
+
 
     - name: 编译固件
       working-directory: ./openwrt
@@ -247,32 +251,33 @@ jobs:
         cd openwrt
         mkdir -p outfile
         
-        # 1. 处理直刷包 burn.img.xz 及同步修改 sha 校验文件
+        # 1. 处理直刷包，强制使用标准命名并同步修改 sha
         for f in $(find bin/targets/ -type f -name "*.burn.img.xz"); do
           if [ -f "$f" ]; then
-            BASE_NAME=$(basename "$f")
-            # 复制并重命名 .xz 文件
-            cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
+            # 直接固定最终名字，抛弃原本可能乱七八糟的 BASE_NAME
+            NEW_XZ_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
+            cp -f "$f" "./outfile/${NEW_XZ_NAME}"
             
-            # 查找对应的 .sha 文件（原版通常是以 .burn.img.sha 结尾）
+            # 查找对应的 .sha 文件
             SHA_FILE="${f%.xz}.sha"
             if [ -f "$SHA_FILE" ]; then
-              SHA_BASE=$(basename "$SHA_FILE")
-              NEW_SHA_NAME="OneCloud_${KERNEL_VER}_${SHA_BASE}"
-              # 复制并重命名 .sha 文件
+              NEW_SHA_NAME="${NEW_XZ_NAME}.sha"
               cp -f "$SHA_FILE" "./outfile/$NEW_SHA_NAME"
               # 修改 .sha 文件内部记录的原始文件名
-              sed -i "s|$SHA_BASE|$NEW_SHA_NAME|g" "./outfile/$NEW_SHA_NAME"
+              sed -i "s|$(basename $SHA_FILE)|$NEW_SHA_NAME|g" "./outfile/$NEW_SHA_NAME"
             fi
           fi
         done
         
+        # 清理可能残留的旧名或错误名的 sha 文件，防止一起被上传
+        rm -f ./outfile/immortalwrt-*.sha ./outfile/OneCloud*.burn.img.sha
+
         cp -rf .config ./outfile/config.txt || true
 
         cd outfile
         KERNEL_VER=${{ env.KERNEL_VER }}
 
-        # 2. 重命名 rootfs 在线升级包
+        # ===== 2. 重命名 rootfs 在线升级包 =====
         ROOTFS_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-rootfs.tar.gz"
         for file in *rootfs.tar.gz; do
           [ -f "$file" ] || continue
@@ -287,7 +292,7 @@ jobs:
 
         if ls *.xz >/dev/null 2>&1; then
           echo "=== 检查最终上传的固件 ==="
-          ls -l
+          ls -lh
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         else
           echo "❌ 错误：没有找到任何 .burn.img.xz 固件！"
