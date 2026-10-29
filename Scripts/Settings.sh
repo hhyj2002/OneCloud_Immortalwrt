@@ -24,18 +24,18 @@ sed -i 's/cn.pool.ntp.org/pool.ntp.org/' package/base-files/files/bin/config_gen
 ######################################################################################################
 
 #固件版本号添加个人标识和日期
-FILE="package/lean/default-settings/files/zzz-default-settings"
-dist_info="Openwrt LEDE 莫小小($(TZ=UTC-8 date +%Y.%m.%d))"
+# FILE="package/lean/default-settings/files/zzz-default-settings"
+# dist_info="Openwrt LEDE 莫小小($(TZ=UTC-8 date +%Y.%m.%d))"
 
 #如果FILE文件不存在，则不是lede系统
-if [ ! -d $FILE ]; then
-  FILE="package/base-files/files/etc/openwrt_release"
-  dist_info="Openwrt SNAPSHOT 莫小小($(TZ=UTC-8 date +%Y.%m.%d))"
-fi
+# if [ ! -d $FILE ]; then
+#   FILE="package/base-files/files/etc/openwrt_release"
+#  dist_info="Openwrt SNAPSHOT 莫小小($(TZ=UTC-8 date +%Y.%m.%d))"
+# fi
 
 # 删除所有 DISTRIB_DESCRIPTION 行，并追加新的赋值
-sed -i "/^DISTRIB_DESCRIPTION=/d" "$FILE"
-echo "DISTRIB_DESCRIPTION='$dist_info'" >> "$FILE"
+# sed -i "/^DISTRIB_DESCRIPTION=/d" "$FILE"
+# echo "DISTRIB_DESCRIPTION='$dist_info'" >> "$FILE"
 
 #添加编译日期标识
 cur_time=$(TZ=UTC-8 date +%y.%m.%d_%H.%M.%S)
@@ -53,9 +53,9 @@ sed -i '/customized in this file/a fs.file-max=102400\nnet.ipv4.neigh.default.gc
 #sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
 
 # Modify default banner
-echo 'Modify default banner...'
-build_date=$(date +"%Y-%m-%d %H:%M:%S")
-echo "      %D %C ${build_date}                   " >> package/base-files/files/etc/banner
-echo " ------------------------------------------------------------- " >> package/base-files/files/etc/banner
-echo " ------------------------------------------------------------- " >> package/base-files/files/etc/banner
-echo "                                                               " >> package/base-files/files/etc/banner
+# echo 'Modify default banner...'
+# build_date=$(date +"%Y-%m-%d %H:%M:%S")
+# echo "      %D %C ${build_date}                   " >> package/base-files/files/etc/banner
+# echo " ------------------------------------------------------------- " >> package/base-files/files/etc/banner
+# echo " ------------------------------------------------------------- " >> package/base-files/files/etc/banner
+# echo "                                                               " >> package/base-files/files/etc/banner
