@@ -263,19 +263,29 @@ jobs:
           if [ -f "$f" ]; then
             BASE_NAME=$(basename "$f")
             cp -f "$f" "./outfile/OneCloud_${KERNEL_VER}_${BASE_NAME}"
+            
+            # ===== 同步重命名对应的 sha 校验文件 =====
+            SHA_FILE="${f}.sha"
+            if [ -f "$SHA_FILE" ]; then
+              NEW_SHA_NAME="OneCloud_${KERNEL_VER}_${BASE_NAME}.sha"
+              cp -f "$SHA_FILE" "./outfile/$NEW_SHA_NAME"
+              # 修改 sha 文件内部记录的原始文件名
+              sed -i "s|$BASE_NAME|OneCloud_${KERNEL_VER}_${BASE_NAME}|g" "./outfile/$NEW_SHA_NAME"
+            fi
           fi
         done
+
+        # 保留原有的通用 sha 复制（防止有漏网之鱼）
         cp -rf bin/targets/*/*/*.sha ./outfile 2>/dev/null || true
 
         # 打包前备份的 rootfs 升级包
         cp -rf /workdir/rootfs_backup/* ./outfile/ 2>/dev/null || true
-
         cp -rf .config ./outfile/config.txt || true
 
         cd outfile
         KERNEL_VER=${{ env.KERNEL_VER }}
 
-        # ===== 重命名 rootfs 在线升级包(带内核版本号) =====
+        # ===== 重命名 rootfs 在线升级包 =====
         ROOTFS_NAME="OneCloud_${KERNEL_VER}-immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
         for file in *rootfs.tar.gz; do
           [ -f "$file" ] || continue
@@ -287,6 +297,7 @@ jobs:
           gzip -f "$file"
           mv "${file}.gz" "$ROOTFS_NAME"
         done
+        # 如果你原本有生成 rootfs 的 sha，也可以在这里加同样的 sed 和 mv 逻辑
 
         if ls *.xz >/dev/null 2>&1; then
           echo "=== 检查最终上传的固件 ==="
@@ -297,7 +308,6 @@ jobs:
           exit 1
         fi
         echo "::set-output name=status::success"
-
         export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
         export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
         echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
