@@ -136,17 +136,14 @@ jobs:
         [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
 
         cd openwrt
-        rm -rf target/linux/amlogic
-        mv $GITHUB_WORKSPACE/lede6.18/target/linux/amlogic target/linux
-        chmod -Rf 755 target/linux/amlogic
-        
-        # 清理冲突补丁
+        # 直接使用 LEDE 源码自带的 amlogic 目录，不要替换！
+        # 如果担心有冲突补丁，可以保留清理命令
         rm -f target/linux/generic/hack-6.18/95*-*.patch
         rm -f target/linux/generic/hack-6.18/64*-*.patch
         
         ls -l target/linux/amlogic
-        echo "amlogic6.18"
-
+        echo "使用原生 amlogic 6.18"
+    
     - name: 启动缓存[第二次起生效]
       uses: rmoyulong/cachewrtbuild@main
       with:
