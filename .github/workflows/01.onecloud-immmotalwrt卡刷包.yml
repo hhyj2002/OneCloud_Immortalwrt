@@ -34,6 +34,6 @@ jobs:
       OWRT_TYPE: OneCloud-Mini
       OWRT_LINUX: 6.1.62
       OWRT_FILES: onecloud/files
-      DIY_P1_SH: mini.sh
+      DIY_P1_SH: mini1.sh
       DIY_P2_SH: Settings.sh
       OWRT_DOCKER: false
