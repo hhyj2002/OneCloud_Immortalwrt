@@ -1,0 +1,146 @@
+
+name: onecloud卡刷包转换成直刷包
+
+on:
+  workflow_dispatch:
+    inputs:
+      firmware_url:
+        description: "精简版固件直链URL（必须填写，否则构建失败）"
+        required: true
+        default: ""
+      free_disk:
+        description: "选择清理服务器[false-不用 true-清理]"
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+#权限
+permissions: write-all 
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: master
+  CONFIG_FILE: .config
+  DIY_P1_SH: op1.sh
+  DIY_P2_SH: op2.sh
+  DIY_P3_SH: op3.sh
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  OWRT_IP: 192.168.31.110
+  OWRT_NAME: OneCloud
+  OWRT_FILES: onecloud/files
+  OWRT_TYPE: 转化版
+  OWRT_free_disk: ${{inputs.free_disk}}
+  TZ: Asia/Shanghai
+
+jobs:
+  build_burn_onecloud:
+    runs-on: ubuntu-22.04
+    
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+        
+    - name: 清理服务器空间(Ubuntu)
+      if: ${{inputs.free_disk}} == 'true'
+      uses: rmoyulong/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
+    - name: 项目检查
+      uses: actions/checkout@main        
+
+    - name: 编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install $(cat $GITHUB_WORKSPACE/Ubuntu-2204.txt)
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+          echo "status=success" >> ${GITHUB_OUTPUT}
+          df -Th
+
+    - name: 初始化变量
+      run: |
+        echo "OWRT_free_disk=$OWRT_free_disk" >> $GITHUB_ENV
+        
+    - name: 克隆源代码
+      working-directory: /workdir
+      run: |
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 检查脚本
+      run: |
+        cd ./Scripts
+        
+        dos2unix ./*.sh
+        chmod +x ./*.sh        
+        
+    - name: 打包直刷包
+      run: |
+        FW_URL="${{ inputs.firmware_url }}"
+        if [ -z "$FW_URL" ]; then
+          echo "错误：未填写精简版固件URL，请在触发时填入 firmware_url"
+          exit 1
+        fi
+        $GITHUB_WORKSPACE/Scripts/convert.sh "$FW_URL"
+
+    - name: 整理文件
+      id: organize
+      run: |
+        cd openwrt/upload
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        
+        #信息
+        export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+        export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
+        echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
+        echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
+        echo "OWRT_TYPE=[精简版]" >> $GITHUB_ENV
+  
+    - name: 上传直刷固件
+      uses: ncipollo/release-action@v1
+      with:
+        allowUpdates: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: OpenWrt_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}
+        body: |
+          自用玩客云${{ env.OWRT_TYPE }}直刷固件！使用双USB公头线刷机！
+          =============基本信息============
+
+          源码：${{env.OWRT_SOURCE}}
+          密码：password
+          地址：${{env.OWRT_IP}}
+        artifacts: ${{ env.FIRMWARE }}/*
+        
+    - name: 清理Releases
+      uses: rmoyulong/delete-older-releases@master
+      with:
+        keep_latest: 12
+        delete_tags: true
+
+    - name: 清理Workflows
+      uses: rmoyulong/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 1
