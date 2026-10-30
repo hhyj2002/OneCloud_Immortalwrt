@@ -45,7 +45,7 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  直刷包编译:
+  Build Burn Fire:
     runs-on: ubuntu-latest
         
     steps:
