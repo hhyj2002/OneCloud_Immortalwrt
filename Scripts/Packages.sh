@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 #安装和更新软件包
@@ -45,37 +46,75 @@ UPDATE_PACKAGE() {
 # UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf" 这样会把原有的open-app-filter，luci-app-appfilter，oaf相关组件删除，不会出现coremark错误。
 
 # UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
+
+# ========== 主题类（保留，不在"服务"/"网络存储"下） ==========
 UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
 UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
 UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
 UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
 UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
 
-#UPDATE_PACKAGE "homeproxy" "VIKINGYFY/homeproxy" "main"
-UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
-UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
-UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
-UPDATE_PACKAGE "passwall" "Openwrt-Passwall/openwrt-passwall" "main" "pkg"
-UPDATE_PACKAGE "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
+# ========== 以下包可能出现在"服务"或"网络存储"菜单下，保守策略全部注释掉 ==========
 
-UPDATE_PACKAGE "luci-app-tailscale" "Tokisaki-Galaxy/luci-app-tailscale-community" "master"
+# 代理相关（可能出现在"服务"下）
+#UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
+#UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
 
-UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
-UPDATE_PACKAGE "diskman" "lisaac/luci-app-diskman" "master"
-UPDATE_PACKAGE "easytier" "EasyTier/luci-app-easytier" "main"
-UPDATE_PACKAGE "fancontrol" "rockjake/luci-app-fancontrol" "main"
-UPDATE_PACKAGE "gecoosac" "laipeng668/luci-app-gecoosac" "main"
-UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox speedtest"
-UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
+# OpenClash（可能出现在"服务"下）
+#UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
+
+# Passwall / Passwall2（可能出现在"服务"下）
+#UPDATE_PACKAGE "passwall" "Openwrt-Passwall/openwrt-passwall" "main" "pkg"
+#UPDATE_PACKAGE "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
+
+# Tailscale VPN（可能出现在"服务"下）
+#UPDATE_PACKAGE "luci-app-tailscale" "Tokisaki-Galaxy/luci-app-tailscale-community" "master"
+
+# DDNS-GO 动态DNS（可能出现在"服务"下）
+#UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
+
+# DiskMan 磁盘管理（可能出现在"网络存储"下）
+#UPDATE_PACKAGE "diskman" "lisaac/luci-app-diskman" "master"
+
+# EasyTier 组网（可能出现在"服务"下）
+#UPDATE_PACKAGE "easytier" "EasyTier/luci-app-easytier" "main"
+
+# FanControl 风扇控制（可能出现在"系统"/"服务"下）
+#UPDATE_PACKAGE "fancontrol" "rockjake/luci-app-fancontrol" "main"
+
+# Gecoosac（可能出现在"服务"下）
+#UPDATE_PACKAGE "gecoosac" "laipeng668/luci-app-gecoosac" "main"
+
+# NetSpeedTest 网速测试（可能出现在"服务"下）
+#UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox speedtest"
+
+# OpenList2 文件列表（可能出现在"网络存储"下）
+#UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
+
+PartExp 分区扩展（可能出现在"网络存储"下）
 UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
-UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
+
+# Qbittorrent BT下载（可能出现在"网络存储"下）
+#UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
+
+QModem 调制解调器（可能出现在"网络"下）
 UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
-UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
-UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "luci-app-timewol luci-app-wolplus"
-UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
-UPDATE_PACKAGE "onliner" "rmoyulong/luci-app-onliner" "main"
-UPDATE_PACKAGE "istore-ui" "linkease/istore-ui" "main"
-UPDATE_PACKAGE "istore-luci" "linkease/istore" "main"
+
+# QuickFile 文件传输（可能出现在"网络存储"下）
+#UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
+
+# Viking（实际安装 luci-app-timewol / luci-app-wolplus，可能出现在"服务"下）
+#UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "luci-app-timewol luci-app-wolplus"
+
+# VNT 虚拟组网（可能出现在"服务"下）
+#UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
+
+# Onliner 在线设备统计（可能出现在"服务"下）
+#UPDATE_PACKAGE "onliner" "rmoyulong/luci-app-onliner" "main"
+
+# iStore 应用商店（可能出现在"网络存储"下）
+#UPDATE_PACKAGE "istore-ui" "linkease/istore-ui" "main"
+#UPDATE_PACKAGE "istore-luci" "linkease/istore" "main"
 
 #更新软件包版本
 UPDATE_VERSION() {
