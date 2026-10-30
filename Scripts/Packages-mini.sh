@@ -1,10 +1,6 @@
-
 #!/bin/bash
 
-# 安装和更新软件包（精简版）
-# 说明：第一个最精简 config 已移除所有第三方应用，仅保留系统核心 + LuCI +
-#       argon 主题 + 必要硬件支持。因此这里只保留 argon 主题的源码拉取，
-#       其余代理 / NAS / 下载 / istore / 磁盘工具等第三方仓库源全部清除。
+#安装和更新软件包
 UPDATE_PACKAGE() {
 	local PKG_NAME=$1
 	local PKG_REPO=$2
@@ -12,7 +8,7 @@ UPDATE_PACKAGE() {
 	local PKG_SPECIAL=$4
 	local PKG_LIST=("$PKG_NAME" $5)  # 第5个参数为自定义名称列表
 	local REPO_NAME=${PKG_REPO#*/}
-
+	
 	echo " "
 
 	# 删除本地可能存在的不同名称的软件包
@@ -44,7 +40,7 @@ UPDATE_PACKAGE() {
 	fi
 }
 
-# 仅保留 argon 主题源（第一个最精简 config 保留 luci-theme-argon）。
-# 若你已按第 9 轮把主题改成 bootstrap：bootstrap 由 luci feed 自带，无需拉源，
-# 可把下面这一行连同 argon 一起删除，本文件即不再需要克隆任何外部仓库。
-UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
+# 调用示例
+# UPDATE_PACKAGE "OpenAppFilter" "destan19/OpenAppFilter" "master" "" "custom_name1 custom_name2"
+# UPDATE_PACKAGE "open-app-filter" "destan19/OpenAppFilter" "master" "" "luci-app-appfilter oaf"
+# UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
