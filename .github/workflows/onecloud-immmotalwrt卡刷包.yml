@@ -1,4 +1,4 @@
-name: 构建玩客云卡刷包
+name: 0.构建玩客云卡刷包
 
 on:
   workflow_dispatch:
