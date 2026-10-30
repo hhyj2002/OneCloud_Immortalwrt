@@ -202,7 +202,7 @@ jobs:
         working-directory: ./openwrt
         run: |
           #通用设置和ssh登录图案
-          curl -L -o package/base-files/files/etc/banner https://raw.githubusercontent.com/rmoyulong/AX6-Actions_Lede/master/ax6/cats_banner
+          #curl -L -o package/base-files/files/etc/banner https://raw.githubusercontent.com/rmoyulong/AX6-Actions_Lede/master/ax6/cats_banner
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
       - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
