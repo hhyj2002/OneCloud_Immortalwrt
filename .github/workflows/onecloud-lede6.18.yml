@@ -222,6 +222,19 @@ jobs:
       working-directory: ./openwrt
       run: |      
           make defconfig
+
+          # ========== 平台自检：配置文件必须与源码仓库的目标命名一致 ==========
+          # coolsnowwolf/lede 的玩客云是 target=amlogic / subtarget=meson8b
+          # 若 .config 里写的是其它源(如 ImmortalWrt 的 meson)的目标，make defconfig 会静默回退到 x86，白跑一小时
+          OWRT_BOARD=$(grep -m1 '^CONFIG_TARGET_BOARD=' .config | cut -d'"' -f2)
+          OWRT_SUBTARGET=$(grep -m1 '^CONFIG_TARGET_SUBTARGET=' .config | cut -d'"' -f2)
+          echo "解析到的目标平台：${OWRT_BOARD} / ${OWRT_SUBTARGET}"
+          if [ "${OWRT_BOARD}" != "amlogic" ] || [ "${OWRT_SUBTARGET}" != "meson8b" ]; then
+            echo "❌ 致命错误：目标平台不是 amlogic/meson8b，与 ${OWRT_URL} 不匹配，终止编译！"
+            exit 1
+          fi
+          echo "✅ 目标平台校验通过"
+
           make download -j$(( $(nproc) * 2 ))
           find dl -size -1k -exec rm -f {} \;
 
@@ -282,7 +295,7 @@ jobs:
         done
         
         # 2. 查找并生成 rootfs 在线升级包
-        FOUND_ROOTFS=$(find bin/targets/ -type f -name "*rootfs.tar*" | head -n 1)
+        FOUND_ROOTFS=$(find bin/targets/amlogic -type f -name "*rootfs.tar*" | head -n 1)
         if [ -n "$FOUND_ROOTFS" ]; then
           ROOTFS_NAME="OneCloud_${KERNEL_VER}_lede-amlogic-meson8b-thunder-rootfs.tar.gz"
           if [[ "$FOUND_ROOTFS" == *.gz ]]; then
