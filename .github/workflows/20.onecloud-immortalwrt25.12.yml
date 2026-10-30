@@ -55,7 +55,7 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  build_brun_firmware:
+  Build_BUrn_Firmware:
     runs-on: ubuntu-latest
         
     steps:
