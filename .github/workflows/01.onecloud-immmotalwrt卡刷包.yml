@@ -30,7 +30,7 @@ jobs:
       OWRT_URL: https://github.com/immortalwrt/immortalwrt
       # 关键：把下拉框选中的值传给核心，而不是写死
       OWRT_BRANCH: ${{ inputs.tag }}
-      OWRT_CFG: arm7_mini.config
+      OWRT_CFG: onecloud-mini.config
       OWRT_TYPE: OneCloud-Mini
       OWRT_LINUX: 6.1.62
       OWRT_FILES: onecloud/files
