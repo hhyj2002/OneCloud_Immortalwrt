@@ -1,1 +1,38 @@
+name: 构建玩客云卡刷包
 
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '选择 ImmortalWrt 源码版本（分支或 tag）'
+        type: choice
+        required: true
+        default: openwrt-24.10
+        options:
+          - openwrt-24.10
+          - v24.10.5
+          - v24.10.4
+          - v23.05.5
+          - main
+
+permissions: write-all
+
+jobs:
+  owrt_config:
+    uses: ./.github/workflows/OWRT-CORE-OneCloud.yml
+    with:
+      OWRT_TARGET: meson8b
+      OWRT_THEME: argon
+      OWRT_NAME: OneCloud
+      OWRT_PW: password
+      OWRT_IP: 192.168.8.59
+      OWRT_URL: https://github.com/immortalwrt/immortalwrt
+      # 关键：把下拉框选中的值传给核心，而不是写死
+      OWRT_BRANCH: ${{ inputs.tag }}
+      OWRT_CFG: arm7_mini.config
+      OWRT_TYPE: OneCloud-Mini
+      OWRT_LINUX: 6.1.62
+      OWRT_FILES: onecloud/files
+      DIY_P1_SH: setup.sh
+      DIY_P2_SH: Settings.sh
+      OWRT_DOCKER: false
