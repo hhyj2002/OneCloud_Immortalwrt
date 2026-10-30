@@ -141,6 +141,37 @@ jobs:
         cd openwrt 
         ls -l target/linux/amlogic
         echo "amlogic6.18"
+
+    - name: 强力清理luci-app残留
+      working-directory: ./openwrt
+      run: |
+        # 1. 删除所有已克隆的 luci-app 目录
+        find feeds/luci/applications -name "luci-app-*" -type d -exec rm -rf {} + 2>/dev/null || true
+        find package -name "luci-app-*" -type d -exec rm -rf {} + 2>/dev/null || true
+        
+        # 2. 删除 feeds 中的代理相关包
+        rm -rf feeds/packages/net/hysteria
+        rm -rf feeds/packages/net/xray-core
+        rm -rf feeds/packages/net/v2ray-core
+        rm -rf feeds/packages/net/v2ray-geodata
+        rm -rf feeds/packages/net/sing-box
+        
+        # 3. 删除 ssr-plus 相关
+        rm -rf feeds/luci/applications/luci-app-ssr-plus
+        rm -rf package/helloworld
+        
+        # 4. 删除 OpenClash 相关
+        rm -rf feeds/luci/applications/luci-app-openclash
+        rm -rf package/luci-app-openclash
+        
+        # 5. 删除 amlogic 主题
+        rm -rf package/luci-app-amlogic
+        
+        # 6. 清理 homeproxy
+        rm -rf feeds/luci/applications/luci-app-homeproxy
+        
+        echo "✅ luci-app 清理完成"
+        ls -la feeds/luci/applications/ 2>/dev/null || echo "feeds/luci/applications 目录已清空"
  
     - name: 启动缓存[第二次起生效]
       uses: rmoyulong/cachewrtbuild@main
@@ -148,7 +179,8 @@ jobs:
         ccache: 'true'
         prefix: ${{ github.workspace }}/openwrt
         mixkey: ${{ env.OWRT_brun_type }}/tree/${{ env.OWRT_BRANCH }}?device=${{ env.OWRT_CFG }} 
-        
+      
+  
     - name: 安装订阅源
       run: |
           cd openwrt
