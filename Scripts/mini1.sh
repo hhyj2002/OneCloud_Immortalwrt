@@ -17,4 +17,4 @@ source $GITHUB_WORKSPACE/Scripts/functions.sh
 #注意：若 Packages.sh / Handles.sh 内部仍会写入代理/第三方应用，请一并清理以保持与精简 config 一致。
 cd package
 $GITHUB_WORKSPACE/Scripts/Packages-mini.sh
-$GITHUB_WORKSPACE/Scripts/Handles.sh
+$GITHUB_WORKSPACE/Scripts/Handles-mini.sh
