@@ -51,7 +51,7 @@ permissions:
   contents: write
 
 jobs:
-  build_burn_firmware:
+  Build_Burn_Firmware:
     runs-on: ubuntu-latest
 
     steps:
