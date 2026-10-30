@@ -45,7 +45,7 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  build_brun_firmware:
+  直刷包编译:
     runs-on: ubuntu-latest
         
     steps:
