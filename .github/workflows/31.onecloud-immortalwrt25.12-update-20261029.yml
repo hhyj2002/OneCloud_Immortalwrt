@@ -4,7 +4,7 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: onecloud-immortalwrt25.12直刷包编译【更新软件包管理器】
+name: 31.onecloud-immortalwrt25.12直刷包编译【更新软件包管理器】
 
 on:
   workflow_dispatch:
@@ -35,7 +35,7 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: ${{ github.event.inputs.REPO_VERSION }}
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: Config/onecloud-immortalwrt25.12-burn.config
+  CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
@@ -52,7 +52,7 @@ env:
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
-  OWRT_CFG: Config/onecloud-immortalwrt25.12-burn.config
+  OWRT_CFG: Config/onecloud-immortalwrt25.12.config
   TZ: Asia/Shanghai
 
 jobs:
