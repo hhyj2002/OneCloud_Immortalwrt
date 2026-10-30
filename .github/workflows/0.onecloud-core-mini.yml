@@ -69,7 +69,7 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
-  owrt_core_OneCloud:
+  OneCloud-core-mini:
     runs-on: ubuntu-latest
 
     steps:
