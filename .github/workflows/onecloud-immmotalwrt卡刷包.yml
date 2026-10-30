@@ -19,7 +19,7 @@ permissions: write-all
 
 jobs:
   owrt_config:
-    uses: ./.github/workflows/OWRT-CORE-OneCloud.yml
+    uses: ./.github/workflows/0.OWRT-CORE-OneCloud.yml
     with:
       OWRT_TARGET: meson8b
       OWRT_THEME: argon
