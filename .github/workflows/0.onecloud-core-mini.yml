@@ -251,6 +251,11 @@ jobs:
           make -j$(( $(nproc) + 1 )) || make -j1 V=s
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+          # 获取实际编译的内核版本（供 Release 显示与文件命名）
+          KERNEL_VERSION=$(make kernelversion 2>/dev/null)
+          [ -z "$KERNEL_VERSION" ] && KERNEL_VERSION="${OWRT_LINUX}"
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+          echo "实际内核版本：$KERNEL_VERSION"
 
       - name: 整理固件
         id: organize
@@ -263,6 +268,27 @@ jobs:
           if [[ $REPO_URL == *"immortalwrt"* ]]; then
             gzip *.tar
           fi
+
+          # 给卡刷包与校验文件追加内核版本号后缀
+          # 若想改用源码 tag/分支作后缀，把下行换成：SUFFIX="_${OWRT_BRANCH}"
+          SUFFIX="_kernel-${KERNEL_VERSION}"
+          for FILE in *.tar.gz *.img.gz *.bin *.img *.itb *.trx; do
+            [ -e "$FILE" ] || continue
+            case "$FILE" in
+              *.tar.gz) STEM="${FILE%.tar.gz}"; EXT=".tar.gz" ;;
+              *.img.gz) STEM="${FILE%.img.gz}"; EXT=".img.gz" ;;
+              *)        STEM="${FILE%.*}";      EXT=".${FILE##*.}" ;;
+            esac
+            mv -f "$FILE" "${STEM}${SUFFIX}${EXT}"
+            echo "重命名：$FILE -> ${STEM}${SUFFIX}${EXT}"
+          done
+          for FILE in *.sha256sums; do
+            [ -e "$FILE" ] || continue
+            NEW="${FILE%.sha256sums}${SUFFIX}.sha256sums"
+            sed -i -E "s/([^[:space:]]+)\.tar\.gz$/\1${SUFFIX}.tar.gz/; s/([^[:space:]]+)\.img\.gz$/\1${SUFFIX}.img.gz/; s/([^[:space:]]+)\.bin$/\1${SUFFIX}.bin/" "$FILE"
+            mv -f "$FILE" "$NEW"
+            echo "重命名：$FILE -> $NEW"
+          done
 
           #获得当前目录的路径信息
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
@@ -302,6 +328,7 @@ jobs:
             ==========🧊 基本信息 🧊==========
             💻 固件源码： ${{env.OWRT_SOURCE}}
             💝 源码分支： ${{ inputs.OWRT_BRANCH }}
+            🙌 内核版本： ${{ env.KERNEL_VERSION }}
             🔑 默认密码： password
             🌐 默认地址： ${{env.OWRT_IP}}
           artifacts: ${{ env.FIRMWARE }}/*
