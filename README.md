@@ -15,11 +15,6 @@ eMMC.burn.img下载地址： https://github.com/rmoyulong/u-boot-onecloud/releas
 <br>
 USB_Burning_Tool下载地址： https://xd1314.lanzoul.com/iXHbz17bqjhc<br>
 
-hub docker版是为hub.docker.com特意编译的版本。本质是个armbian用docker方式装入的op的文件。<br>
-玩客云使用docker版，举个列子（地址可能会变，酌情自己改正）：<br>
-https://github.com/hzyitc/armbian-onecloud/releases/download/ci-20250823-102917-UTC/Armbian-unofficial_25.11.0-trunk_Onecloud_trixie_current_6.12.43_minimal.burn.img.xz<br>
-
-用双公头刷完armbian后，下载 https://github.com/rmoyulong/OneCloud_OpenWrt/releases/download/Docker_Latest/immortalwrt-meson-meson8b-thunder-onecloud-rootfs.tar.gz <br>
 
 把immortalwrt-meson-meson8b-thunder-onecloud-rootfs.tar.gz改名op.tar.gz <br>
 ssh armbian输入以下命令 <br>
