@@ -19,7 +19,7 @@ on:
 permissions: write-all
 
 jobs:
-  owrt_config:
+  onecloud-mini:
     uses: ./.github/workflows/0.onecloud-core-mini.yml
     with:
       OWRT_TARGET: meson8b
