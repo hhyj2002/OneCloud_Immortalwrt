@@ -12,6 +12,14 @@ rm -f feeds/luci/applications/luci-app-*/Makefile
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
+# 在 setup.sh 的 ./scripts/feeds install -a 之后，cd package 之前，加上：
+
+# 【双重保险】feeds install 后再次清理，防止 install -a 把包装回了 package/ 目录
+rm -rf package/luci-app-*
+rm -rf package/helloworld
+rm -rf package/v2ray-geodata
+rm -rf package/sing-box
+
 # rm -rf feeds/luci/applications/luci-app-homeproxy
 # merge_package main https://github.com/VIKINGYFY/packages package luci-app-homeproxy
 
