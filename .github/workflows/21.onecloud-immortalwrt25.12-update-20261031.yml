@@ -183,6 +183,19 @@ jobs:
           ./scripts/feeds install -f luci-app-package-manager
           echo "✅ luci-app-package-manager 已更新到最新版"
 
+    - name: 还原默认开机启动脚本 rc.local
+      working-directory: ./openwrt
+      run: |
+          # 强制写入纯净的 rc.local，覆盖第三方插件的修改
+          cat > package/base-files/files/etc/rc.local << 'EOF'
+          #!/bin/sh /etc/rc.common
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          exit 0
+          EOF
+          chmod 755 package/base-files/files/etc/rc.local
+          echo "默认启动脚本已还原"
+
     - name: 加载自定义配置
       working-directory: ./openwrt
       run: |
