@@ -197,16 +197,30 @@ jobs:
     - name: 禁用第三方软件包签名校验
       working-directory: ./openwrt
       run: |
-          # 禁用新版 APK 的签名校验
-          sed -i 's/^option check_signature.*/# option check_signature/' package/apk/files/apk.conf || true
-          echo "#option check_signature" >> package/apk/files/apk.conf || true
-          
-          # 禁用旧版 OPKG 的签名校验（双重保险）
-          sed -i 's/^option check_signature.*/# option check_signature/' package/opkg/files/opkg.conf || true
-          echo "#option check_signature" >> package/opkg/files/opkg.conf || true
-          
-          echo "已成功禁用第三方软件包签名校验"
+          # 创建 apk wrapper 脚本，所有 apk 调用自动带上 --allow-untrusted
+          mkdir -p package/base-files/files/usr/bin
+          cat > package/base-files/files/usr/bin/apk-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec /usr/bin/apk.real --allow-untrusted "$@"
+          WRAPPER
+          chmod 755 package/base-files/files/usr/bin/apk-wrapper
 
+          # 创建启动脚本，开机时把 apk 替换为 wrapper
+          mkdir -p package/base-files/files/etc/init.d
+          cat > package/base-files/files/etc/init.d/S01apk-wrapper << 'INIT'
+          #!/bin/sh /etc/rc.common
+          START=01
+          start() {
+              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
+                  mv /usr/bin/apk /usr/bin/apk.real
+                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
+              fi
+          }
+          INIT
+          chmod 755 package/base-files/files/etc/init.d/S01apk-wrapper
+
+          echo "已成功禁用第三方软件包签名校验"
+    
     - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
       working-directory: ./openwrt
       run: |
