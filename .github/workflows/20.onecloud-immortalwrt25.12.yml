@@ -184,6 +184,19 @@ jobs:
           else
             ${GITHUB_WORKSPACE}/${DIY_P3_SH}
           fi 
+
+    - name: 禁用第三方软件包签名校验
+      working-directory: ./openwrt
+      run: |
+          # 禁用新版 APK 的签名校验
+          sed -i 's/^option check_signature.*/# option check_signature/' package/apk/files/apk.conf || true
+          echo "#option check_signature" >> package/apk/files/apk.conf || true
+          
+          # 禁用旧版 OPKG 的签名校验（双重保险）
+          sed -i 's/^option check_signature.*/# option check_signature/' package/opkg/files/opkg.conf || true
+          echo "#option check_signature" >> package/opkg/files/opkg.conf || true
+          
+          echo "已成功禁用第三方软件包签名校验"
                
     - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
       working-directory: ./openwrt
