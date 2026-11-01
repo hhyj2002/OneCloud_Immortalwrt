@@ -180,9 +180,12 @@ jobs:
             ${GITHUB_WORKSPACE}/${DIY_P5_SH}
           fi
 
-      - name: 预置默认网络配置 (DHCP + IPv6 + eth0桥接)
+      - name: 系统初始化：预置DHCP网络 + 首次启动自动扩容
         working-directory: ./openwrt
         run: |
+          # ==========================================
+          # 1. 预置默认网络配置 (DHCP + IPv6 + eth0桥接)
+          # ==========================================
           mkdir -p ./files/etc/config
           cat > ./files/etc/config/network << 'EOF'
           config interface 'loopback'
@@ -211,6 +214,18 @@ jobs:
           	option multipath 'off'
           EOF
           echo "已预置 DHCP + IPv6 网络配置"
+
+          # ==========================================
+          # 2. 首次启动自动扩容根目录 (针对玩客云 eMMC)
+          # ==========================================
+          mkdir -p ./files/etc/uci-defaults
+          cat > ./files/etc/uci-defaults/99-resize-rootfs << 'RESIZE'
+          #!/bin/sh
+          resize2fs /dev/mmcblk1p2
+          exit 0
+          RESIZE
+          chmod 755 ./files/etc/uci-defaults/99-resize-rootfs
+          echo "已配置首次开机自动扩容（uci-defaults 机制，执行后自删）"
 
       - name: 下载编译环境
         working-directory: ./openwrt
