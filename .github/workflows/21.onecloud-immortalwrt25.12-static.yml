@@ -159,7 +159,7 @@ jobs:
           ./scripts/feeds update luci
           ./scripts/feeds uninstall luci-app-package-manager 2>/dev/null || true
           ./scripts/feeds install -f luci-app-package-manager
-          echo "✅ luci-app-package-manager 已更新到最新版"
+          echo "[ok] luci-app-package-manager 已更新到最新版"
 
     - name: 加载自定义配置
       working-directory: ./openwrt
@@ -312,15 +312,17 @@ jobs:
           echo "已配置首次开机自动扩容（uci-defaults 机制，执行后自删）"
     
           # === 追加 APK 兼容架构 ===
-          mkdir -p ./files/etc/apk
-          if [ -f ./files/etc/apk/arch ]; then
-             if ! grep -q 'arm_cortex-a5_vfpv4' ./files/etc/apk/arch; then
-           echo 'arm_cortex-a5_vfpv4' >> ./files/etc/apk/arch
-             fi
-          else
-           echo 'arm_cortex-a5_vfpv4' > ./files/etc/apk/arch
-          fi
-          echo "已追加 APK 兼容架构 arm_cortex-a5_vfpv4"
+          mkdir -p ./files/etc/uci-defaults
+          cat > ./files/etc/uci-defaults/99-apk-arch << 'APKARCH'
+          #!/bin/sh
+          # 保留原始 arm_cortex-a5_neon-vfpv4，仅追加 arm_cortex-a5_vfpv4
+          ARCH_FILE=/etc/apk/arch
+          [ -f "$ARCH_FILE" ] || touch "$ARCH_FILE"
+          grep -qx 'arm_cortex-a5_vfpv4' "$ARCH_FILE" || echo 'arm_cortex-a5_vfpv4' >> "$ARCH_FILE"
+          exit 0
+          APKARCH
+          chmod 755 ./files/etc/uci-defaults/99-apk-arch
+          echo "已配置首次开机追加 APK 架构 arm_cortex-a5_vfpv4（保留原始架构）"
     
     - name: 下载编译环境
       working-directory: ./openwrt
