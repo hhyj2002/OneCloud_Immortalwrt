@@ -272,25 +272,17 @@ jobs:
 
           echo "已成功禁用第三方软件包签名校验（双保险）"
 
-    - name: 追加 APK 兼容架构 arm_cortex-a5_vfpv4
+          
+    - name: 还原默认开机启动脚本、配置首次扩容并追加APK兼容架构
       working-directory: ./openwrt
       run: |
-          # 编译阶段修改固件里的 /etc/apk/arch
-          mkdir -p package/base-files/files/etc/apk
-          if ! grep -qxF "arm_cortex-a5_vfpv4" package/base-files/files/etc/apk/arch 2>/dev/null; then
-              echo "arm_cortex-a5_vfpv4" >> package/base-files/files/etc/apk/arch
-          fi
-          # === 双保险：同时写入 ./files/ 目录 ===
-          mkdir -p ./files/etc/apk
-          if ! grep -qxF "arm_cortex-a5_vfpv4" ./files/etc/apk/arch 2>/dev/null; then
-              echo "arm_cortex-a5_vfpv4" >> ./files/etc/apk/arch
-          fi
-          echo "已追加 arm_cortex-a5_vfpv4 到 /etc/apk/arch（双保险）"
-    
-    - name: 还原默认开机启动脚本 rc.local
-      working-directory: ./openwrt
-      run: |
-          # 强制写入纯净的 rc.local，覆盖第三方插件的修改
+          # === 清理 onecloud 自定义脚本 ===
+          rm -f ./files/etc/rc.local
+          rm -f ./files/etc/1.sh
+          echo "已清理 onecloud 自定义启动脚本"
+
+          # === 写入纯净的 rc.local（双保险） ===
+          mkdir -p package/base-files/files/etc
           cat > package/base-files/files/etc/rc.local << 'EOF'
           #!/bin/sh /etc/rc.common
           # Put your custom commands here that should be executed once
@@ -298,7 +290,8 @@ jobs:
           exit 0
           EOF
           chmod 755 package/base-files/files/etc/rc.local
-          # === 双保险：同时覆盖 ./files/ 目录中的rc.local ===
+
+          mkdir -p ./files/etc
           cat > ./files/etc/rc.local << 'EOF2'
           #!/bin/sh /etc/rc.common
           # Put your custom commands here that should be executed once
@@ -307,6 +300,22 @@ jobs:
           EOF2
           chmod 755 ./files/etc/rc.local
           echo "默认启动脚本已还原（双保险）"
+
+          # === 预置首次开机自动扩容（执行后自动删除） ===
+          mkdir -p ./files/etc/uci-defaults
+          cat > ./files/etc/uci-defaults/99-resize-rootfs << 'EOF3'
+          #!/bin/sh
+          resize2fs /dev/mmcblk1p2
+          exit 0
+          EOF3
+          chmod 755 ./files/etc/uci-defaults/99-resize-rootfs
+          echo "已配置首次开机自动扩容（uci-defaults 机制，执行后自删）"
+
+          # === 追加 APK 兼容架构 ===
+          mkdir -p ./files/etc/apk
+          touch ./files/etc/apk/repositories
+          echo 'arch arm_cortex-a5_vfpv4 100' >> ./files/etc/apk/repositories
+          echo "已追加 APK 兼容架构 arm_cortex-a5_vfpv4"
     
     - name: 下载编译环境
       working-directory: ./openwrt
