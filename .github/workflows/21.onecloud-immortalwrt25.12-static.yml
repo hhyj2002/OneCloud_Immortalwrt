@@ -1,5 +1,3 @@
-
-
 #========================================================================================================================
 # https://github.com/ophub/amlogic-s9xxx-openwrt
 # Description: Use Releases file to packaging
@@ -276,7 +274,7 @@ jobs:
     - name: 还原默认开机启动脚本、配置首次扩容并追加APK兼容架构
       working-directory: ./openwrt
       run: |
-          # === 清理 onecloud 自定义脚本 ===
+          # ===1. 清理 onecloud 自定义脚本 ===
           rm -f ./files/etc/rc.local
           rm -f ./files/etc/1.sh
           echo "已清理 onecloud 自定义启动脚本"
@@ -301,7 +299,7 @@ jobs:
           chmod 755 ./files/etc/rc.local
           echo "默认启动脚本已还原（双保险）"
 
-          # === 预置首次开机自动扩容（执行后自动删除） ===
+          # ===2. 预置首次开机自动扩容（执行后自动删除） ===
           mkdir -p ./files/etc/uci-defaults
           cat > ./files/etc/uci-defaults/99-resize-rootfs << 'EOF3'
           #!/bin/sh
@@ -311,7 +309,7 @@ jobs:
           chmod 755 ./files/etc/uci-defaults/99-resize-rootfs
           echo "已配置首次开机自动扩容（uci-defaults 机制，执行后自删）"
     
-          # === 追加 APK 兼容架构 ===
+          # ===3. 追加 APK 兼容架构 ===
           mkdir -p ./files/etc/uci-defaults
           cat > ./files/etc/uci-defaults/99-apk-arch << 'APKARCH'
           #!/bin/sh
@@ -323,6 +321,20 @@ jobs:
           APKARCH
           chmod 755 ./files/etc/uci-defaults/99-apk-arch
           echo "已配置首次开机追加 APK 架构 arm_cortex-a5_vfpv4（保留原始架构）"
+
+          # ===4. 首次启动完成后自动重启一次===
+          mkdir -p ./files/etc/uci-defaults
+          cat > ./files/etc/uci-defaults/99-zz-firstboot-reboot << 'REBOOT'
+          #!/bin/sh
+          # 首次启动完成后自动重启一次
+          [ -f /tmp/firstboot-reboot-done ] && exit 0
+          touch /tmp/firstboot-reboot-done
+          ( sleep 60 && reboot ) &
+          exit 0
+          REBOOT
+          chmod 755 ./files/etc/uci-defaults/99-zz-firstboot-reboot
+          echo "已配置首次启动完成后自动重启（uci-defaults 机制，执行后自删）"
+
     
     - name: 下载编译环境
       working-directory: ./openwrt
@@ -464,4 +476,4 @@ jobs:
       with:
         retain_days: 0
         keep_minimum_runs: 1
-#（注：内容由AI生成）
+
