@@ -330,8 +330,13 @@ jobs:
           # 5. 追加 APK 兼容架构 (arm_cortex-a5_vfpv4)
           # ==========================================
           mkdir -p ./files/etc/apk
-          touch ./files/etc/apk/repositories
-          echo 'arch arm_cortex-a5_vfpv4 100' >> ./files/etc/apk/repositories
+          if [ -f ./files/etc/apk/arch ]; then
+             if ! grep -q 'arm_cortex-a5_vfpv4' ./files/etc/apk/arch; then
+             echo 'arm_cortex-a5_vfpv4' >> ./files/etc/apk/arch
+             fi
+          else
+            echo 'arm_cortex-a5_vfpv4' > ./files/etc/apk/arch
+          fi
           echo "已追加 APK 兼容架构 arm_cortex-a5_vfpv4"
     
     - name: 下载编译环境
