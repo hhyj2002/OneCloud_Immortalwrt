@@ -1,1 +1,477 @@
 
+
+#========================================================================================================================
+# https://github.com/ophub/amlogic-s9xxx-openwrt
+# Description: Use Releases file to packaging
+# Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
+#========================================================================================================================
+name: 22.onecloud-immortalwrt25.12直刷包编译【更新软件包管理器&DHCP】
+
+on:
+  workflow_dispatch:
+    inputs:
+      REPO_VERSION:
+        description: '选择源码Tag版本'
+        required: true
+        type: choice
+        default: v25.12.2
+        options:
+          - v25.12.2
+          - v25.12.1
+          - v25.12.0
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: ${{ github.event.inputs.REPO_VERSION }}
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
+  DIY_P1_SH: Scripts/setup.sh
+  DIY_P2_SH: Scripts/Settings.sh
+  DIY_P3_SH: Scripts/false
+  DIY_P4_SH: Scripts/openclash32.sh
+  DIY_P5_SH: Scripts/false
+  OWRT_NAME: OneCloud
+  OWRT_FILES: onecloud/files
+  OWRT_brun_type: amlogic6.12
+  OWRT_CFG: Config/onecloud-immortalwrt25.12.config
+  TZ: Asia/Shanghai
+
+jobs:
+  Build_Burn_Firmware:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 清理服务器空间(Ubuntu)
+      uses: rmoyulong/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
+    - name: 检查项目
+      uses: actions/checkout@main
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+          sudo -E apt -yqq purge firefox
+          sudo -E apt -yqq update
+          sudo -E apt -yqq full-upgrade
+          sudo -E apt -yqq autoremove --purge
+          sudo -E apt -yqq autoclean
+          sudo -E apt -yqq clean
+          sudo -E apt -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev
+          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+
+          sudo -E systemctl daemon-reload
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+          echo "status=success" >> ${GITHUB_OUTPUT}
+          df -Th
+
+    - name: 初始化变量
+      run: |
+          export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+          export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
+
+          echo "OWRT_URL=$REPO_URL" >> $GITHUB_ENV
+          echo "OWRT_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
+          echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
+          echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
+          echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
+          echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
+          echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
+          echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
+          echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
+
+          echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
+          echo "OWRT_CFG=$OWRT_CFG" >> $GITHUB_ENV
+
+    - name: 克隆源仓库
+      working-directory: /workdir
+      run: |
+        df -hT $PWD
+        echo "==> 正在克隆Tag版本: $REPO_BRANCH"
+        git clone $REPO_URL openwrt
+        cd openwrt
+        git checkout tags/$REPO_BRANCH
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 检查脚本
+      run: |
+        cd ./Scripts
+
+        dos2unix ./*.sh
+        chmod +x ./*.sh
+
+    - name: 设置soc
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+
+        cd openwrt
+        mv $GITHUB_WORKSPACE/lede6.12/target/linux/amlogic target/linux
+        chmod -Rf 755 target/linux/amlogic
+        ls -l target/linux/amlogic
+        echo "amlogic6.12"
+
+    - name: 启动缓存[第二次起生效]
+      uses: rmoyulong/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        prefix: ${{ github.workspace }}/openwrt
+        mixkey: ${{ env.OWRT_brun_type }}/tree/${{ env.OWRT_BRANCH }}?device=${{ env.OWRT_CFG }}
+
+    - name: 安装订阅源
+      run: |
+          cd openwrt
+
+          #更新到最新插件
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+          echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+    - name: 修复luci软件包页面(25.12 apk JSON bug)
+      working-directory: ./openwrt
+      run: |
+          # 强制更新luci feed到最新，修复 luci-app-package-manager 网页JSON截断bug
+          ./scripts/feeds update luci
+          ./scripts/feeds uninstall luci-app-package-manager 2>/dev/null || true
+          ./scripts/feeds install -f luci-app-package-manager
+          echo "[OK] luci-app-package-manager 已更新到最新版"
+
+    - name: 加载自定义配置
+      working-directory: ./openwrt
+      run: |
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
+            echo "不需要执行此选项"
+          else
+            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
+          fi
+  
+    - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
+      working-directory: ./openwrt
+      run: |
+          dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
+          dos2unix $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
+          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/*.sh
+          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
+          chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
+
+          #aria2
+          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/etc/aria2
+          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2
+          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2/download
+          chmod -R 755 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/share
+
+          rm -rf ./tmp* ./.config*
+          [ -e $GITHUB_WORKSPACE/${{ env.OWRT_CFG }}  ] && mv $GITHUB_WORKSPACE/${{ env.OWRT_CFG }}  .config
+
+          #如果files文件夹不存在，创建文件夹
+          if [ ! -d "./files" ]; then
+            mkdir ./files
+          fi
+          cp -rf $GITHUB_WORKSPACE/$OWRT_FILES/* ./files
+
+          ls -l files
+          if [ ! -f files/etc/rc.local ]; then
+            echo "rc.local文件不存在！"
+          else
+            cat files/etc/rc.local
+          fi
+
+
+          #web控制台去掉443监听补丁
+          if [[ "${{ env.OWRT_brun_type }}" == *"OneCloud-docker"* ]]; then
+            cp -rf $GITHUB_WORKSPACE/ax6/uhttpd ./files/etc/config
+          else
+            #去掉多余的dhcp文件，让首次启动有dhcp服务
+            rm -rf ./files/etc/config/dhcp
+          fi
+
+          #openclash 32
+          $GITHUB_WORKSPACE/$DIY_P4_SH
+
+          #python3.patch.sh
+          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
+            echo "不需要执行此选项"
+          else
+            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
+          fi
+
+    - name: 系统初始化：禁用签名校验 + 网络/DHCP + 扩容 + APK架构
+      working-directory: ./openwrt
+      run: |
+          # ==========================================
+          # 1. 禁用第三方软件包签名校验（apk wrapper）
+          # ==========================================
+          mkdir -p package/base-files/files/usr/bin
+          cat > package/base-files/files/usr/bin/apk-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec /usr/bin/apk.real --allow-untrusted "$@"
+          WRAPPER
+          chmod 755 package/base-files/files/usr/bin/apk-wrapper
+
+          mkdir -p package/base-files/files/etc/init.d
+          cat > package/base-files/files/etc/init.d/S01apk-wrapper << 'INIT'
+          #!/bin/sh /etc/rc.common
+          START=01
+          start() {
+              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
+                  mv /usr/bin/apk /usr/bin/apk.real
+                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
+              fi
+          }
+          INIT
+          chmod 755 package/base-files/files/etc/init.d/S01apk-wrapper
+
+          mkdir -p ./files/usr/bin
+          cat > ./files/usr/bin/apk-wrapper << 'WRAPPER2'
+          #!/bin/sh
+          exec /usr/bin/apk.real --allow-untrusted "$@"
+          WRAPPER2
+          chmod 755 ./files/usr/bin/apk-wrapper
+
+          mkdir -p ./files/etc/init.d
+          cat > ./files/etc/init.d/S01apk-wrapper << 'INIT2'
+          #!/bin/sh /etc/rc.common
+          START=01
+          start() {
+              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
+                  mv /usr/bin/apk /usr/bin/apk.real
+                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
+              fi
+          }
+          INIT2
+          chmod 755 ./files/etc/init.d/S01apk-wrapper
+
+          echo "已成功禁用第三方软件包签名校验（双保险）"
+
+          # ==========================================
+          # 2. 预置默认网络配置 (DHCP + IPv6 + eth0桥接)
+          # ==========================================
+          mkdir -p ./files/etc/config
+          cat > ./files/etc/config/network << 'EOF'
+          config interface 'loopback'
+          	option proto 'static'
+          	option ipaddr '127.0.0.1'
+          	option netmask '255.0.0.0'
+          	option device 'lo'
+
+          config globals 'globals'
+          	option packet_steering '1'
+
+          config interface 'lan'
+          	option proto 'dhcp'
+          	option device 'br-lan'
+          	option sendclientid 'auto'
+          	option multipath 'off'
+
+          config device
+          	option name 'br-lan'
+          	option type 'bridge'
+          	list ports 'eth0'
+
+          config interface 'lan6'
+          	option proto 'dhcpv6'
+          	option device 'br-lan'
+          	option reqaddress 'try'
+          	option reqprefix 'auto'
+          	option norelease '1'
+          	option sendclientid 'auto'
+          	option multipath 'off'
+          EOF
+          echo "已预置 DHCP + IPv6 网络配置"
+
+          # ==========================================
+          # 3. 还原纯净 rc.local (双保险机制)
+          # ==========================================
+          rm -f ./files/etc/rc.local ./files/etc/1.sh
+
+          mkdir -p package/base-files/files/etc
+          cat > package/base-files/files/etc/rc.local << 'RCLOCAL'
+          #!/bin/sh /etc/rc.common
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          exit 0
+          RCLOCAL
+          chmod 755 package/base-files/files/etc/rc.local
+
+          mkdir -p ./files/etc
+          cat > ./files/etc/rc.local << 'RCLOCAL2'
+          #!/bin/sh /etc/rc.common
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          exit 0
+          RCLOCAL2
+          chmod 755 ./files/etc/rc.local
+          echo "已还原纯净 rc.local"
+
+          # ==========================================
+          # 4. 首次启动自动扩容根目录 (针对玩客云 eMMC)
+          # ==========================================
+          mkdir -p ./files/etc/uci-defaults
+          cat > ./files/etc/uci-defaults/99-resize-rootfs << 'RESIZE'
+          #!/bin/sh
+          resize2fs /dev/mmcblk1p2
+          exit 0
+          RESIZE
+          chmod 755 ./files/etc/uci-defaults/99-resize-rootfs
+          echo "已配置首次开机自动扩容（uci-defaults 机制，执行后自删）"
+
+          # ==========================================
+          # 5. 追加 APK 兼容架构 (arm_cortex-a5_vfpv4)
+          # ==========================================
+          mkdir -p ./files/etc/apk
+          touch ./files/etc/apk/repositories
+          echo 'arch arm_cortex-a5_vfpv4 100' >> ./files/etc/apk/repositories
+          echo "已追加 APK 兼容架构 arm_cortex-a5_vfpv4"
+    
+    - name: 下载编译环境
+      working-directory: ./openwrt
+      run: |
+          # 确保生成 rootfs.tar.gz 在线升级包
+          if grep -q "CONFIG_TARGET_ROOTFS_TARGZ" .config; then
+            sed -i 's/^CONFIG_TARGET_ROOTFS_TARGZ.*/CONFIG_TARGET_ROOTFS_TARGZ=y/' .config
+          else
+            echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
+          fi
+
+          make defconfig
+          make download -j$(( $(nproc) * 2 ))
+          find dl -size -1k -exec rm -f {} \;
+
+    - name: 编译固件
+      working-directory: ./openwrt
+      run: |
+          echo -e "$(nproc) thread compile"
+          make -j$(( $(nproc) + 1 )) || make -j1 V=s
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: 获取内核版本
+      working-directory: ./openwrt
+      run: |
+        KERNEL_PKG=$(find bin/targets/ \( -name "kernel_*.ipk" -o -name "kernel-*.apk" \) | head -n 1)
+        if [ -n "$KERNEL_PKG" ]; then
+          KERNEL_VER=$(echo "$KERNEL_PKG" | grep -oP 'kernel[-_]\K[0-9]+\.[0-9]+\.[0-9]+')
+        else
+          KERNEL_VER=$(grep -m 1 "KERNEL_PATCHVER" target/linux/amlogic/Makefile | cut -d '=' -f 2 | tr -d ' ')
+        fi
+        if [ -z "$KERNEL_VER" ]; then
+          KERNEL_VER="unknown"
+        fi
+        echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
+        echo "获取到的内核版本为: $KERNEL_VER"
+
+    - name: 备份原生rootfs升级包(防止打包脚本清理)
+      working-directory: ./openwrt
+      run: |
+          mkdir -p /workdir/rootfs_backup
+          # 兼容 rootfs.tar.gz 与 rootfs.tar 两种产物
+          find bin/targets/ -type f -name "*rootfs.tar.gz" -exec cp -f {} /workdir/rootfs_backup/ \;
+          find bin/targets/ -type f -name "*rootfs.tar"   -exec cp -f {} /workdir/rootfs_backup/ \;
+          echo "=== 已备份的 rootfs 包 ==="
+          ls -lh /workdir/rootfs_backup/
+
+    - name: 制作直刷包
+      run: |
+          $GITHUB_WORKSPACE/Scripts/convert2.sh
+
+    - name: 整理固件
+      id: organize
+      run: |
+        cd openwrt
+        mkdir -p outfile
+
+        # 1. 先精确找到真正的直刷包和校验文件（忽略任何已经带前缀的，防止死循环）
+        BURN_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
+        
+        # 查找原始的 xz 包
+        for file in $(find bin/targets/ -type f -name "*burn.img.xz" ! -name "OneCloud_*"); do
+          if [ -f "$file" ]; then
+            BASE_NAME=$(basename "$file")
+            cp -f "$file" "./outfile/$BURN_NAME"
+            
+            # 查找与之对应的 sha 包
+            SHA_FILE="${file%.xz}.sha"
+            if [ -f "$SHA_FILE" ]; then
+              NEW_SHA_NAME="${BURN_NAME}.sha"
+              cp -f "$SHA_FILE" "./outfile/$NEW_SHA_NAME"
+              # 替换 sha 文件内部记录的旧文件名
+              sed -i "s|$(basename $SHA_FILE)|$NEW_SHA_NAME|g" "./outfile/$NEW_SHA_NAME"
+            fi
+          fi
+        done
+
+        # 2. 清理可能存在的其他无用 sha，防止被一起上传
+        rm -f ./outfile/immortalwrt-*.sha
+
+        # 3. 复制打包前备份的 rootfs 升级包
+        cp -rf /workdir/rootfs_backup/* ./outfile/ 2>/dev/null || true
+        cp -rf .config ./outfile/config.txt
+
+        cd outfile
+        KERNEL_VER=${{ env.KERNEL_VER }}
+
+        # ===== 4. 重命名 rootfs 在线升级包 =====
+        ROOTFS_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
+        for file in *rootfs.tar.gz; do
+          [ -f "$file" ] || continue
+          [ "$file" = "$ROOTFS_NAME" ] && continue
+          mv "$file" "$ROOTFS_NAME"
+        done
+        for file in *rootfs.tar; do
+          [ -f "$file" ] || continue
+          gzip -f "$file"
+          mv "${file}.gz" "$ROOTFS_NAME"
+        done
+
+        echo "=== 最终发布文件 ==="
+        ls -lh
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+        #信息
+        export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
+        export OWRT_SOURCE=$(echo $REPO_URL | cut -d '/' -f 5-)
+        echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
+        echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
+   
+    - name: 上传直刷固件
+      uses: ncipollo/release-action@v1
+      with:
+        allowUpdates: true
+        makeLatest: false
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: OneCloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
+        body: |
+          自用玩客云一站式直刷固件[${{ env.OWRT_brun_type }}]！
+          请使用双USB公头线刷机！
+          ==========🧊 基本信息 🧊==========
+          💻 固件源码： ${{env.OWRT_SOURCE}}
+          💝 源码Tag： ${{ env.OWRT_BRANCH }}
+          🧠 内核版本： ${{ env.KERNEL_VER }}
+          🔑 默认密码： password
+          🌐 默认地址： DHCP（请在路由器管理页面查看设备IP）
+        artifacts: ${{ env.FIRMWARE }}/*
+
+    - name: 清理Releases
+      uses: rmoyulong/delete-older-releases@master
+      with:
+        keep_latest: 10
+        delete_tags: true
+
+    - name: 清理Workflows
+      uses: rmoyulong/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 1
+
