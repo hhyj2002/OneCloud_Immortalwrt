@@ -1,4 +1,5 @@
 
+
 #========================================================================================================================
 # https://github.com/ophub/amlogic-s9xxx-openwrt
 # Description: Use Releases file to packaging
@@ -42,11 +43,6 @@ env:
   DIY_P4_SH: Scripts/openclash32.sh
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_COWTRANSFER: false
-  UPLOAD_WETRANSFER: false
-  UPLOAD_RELEASE: true
   OWRT_IP: ${{ github.event.inputs.OP_IP }}
   OWRT_SERVER_IP: ${{ github.event.inputs.SERVER_IP }}
   OWRT_NAME: OneCloud
@@ -74,20 +70,6 @@ jobs:
     - name: 检查项目
       uses: actions/checkout@main
 
-    - name: 检查分配的服务器性能
-      run: |
-        echo "警告⚠"
-        echo "分配的服务器性能有限，若选择的插件过多，务必注意CPU性能！"
-        echo -e "已知CPU型号（降序）： 9V74 7763，8370C，8272CL，8171M，E5-2673 \n"
-        echo "--------------------------CPU信息--------------------------"
-        echo "CPU物理数量：$(cat /proc/cpuinfo | grep "physical id" | sort | uniq | wc -l)"
-        echo -e "CPU核心信息：$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
-        echo "--------------------------内存信息--------------------------"
-        echo "已安装内存详细信息："
-        echo -e "$(sudo lshw -short -C memory | grep GiB) \n"
-        echo "--------------------------硬盘信息--------------------------"
-        echo "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l)" && df -hT
-
     - name: 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -101,8 +83,6 @@ jobs:
           sudo -E apt -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
 
-          sudo -E systemctl daemon-reload
-          sudo -E timedatectl set-timezone "Asia/Shanghai"
           sudo -E systemctl daemon-reload
           sudo timedatectl set-timezone "$TZ"
           sudo mkdir -p /workdir
@@ -119,7 +99,6 @@ jobs:
           echo "OWRT_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
           echo "OWRT_DATE=$OWRT_DATE" >> $GITHUB_ENV
           echo "OWRT_SOURCE=$OWRT_SOURCE" >> $GITHUB_ENV
-          echo "OWRT_TYPE=$OWRT_TYPE" >> $GITHUB_ENV
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
           echo "OWRT_IP=$OWRT_IP" >> $GITHUB_ENV
           echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
@@ -129,7 +108,6 @@ jobs:
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
 
           echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
-          echo ${{ env.OWRT_brun_type }}
           echo "OWRT_CFG=$OWRT_CFG" >> $GITHUB_ENV
 
     - name: 克隆源仓库
@@ -183,19 +161,6 @@ jobs:
           ./scripts/feeds install -f luci-app-package-manager
           echo "✅ luci-app-package-manager 已更新到最新版"
 
-    - name: 还原默认开机启动脚本 rc.local
-      working-directory: ./openwrt
-      run: |
-          # 强制写入纯净的 rc.local，覆盖第三方插件的修改
-          cat > package/base-files/files/etc/rc.local << 'EOF'
-          #!/bin/sh /etc/rc.common
-          # Put your custom commands here that should be executed once
-          # the system init finished. By default this file does nothing.
-          exit 0
-          EOF
-          chmod 755 package/base-files/files/etc/rc.local
-          echo "默认启动脚本已还原"
-
     - name: 加载自定义配置
       working-directory: ./openwrt
       run: |
@@ -207,43 +172,6 @@ jobs:
             ${GITHUB_WORKSPACE}/${DIY_P3_SH}
           fi
   
-    - name: 禁用第三方软件包签名校验
-      working-directory: ./openwrt
-      run: |
-          # 创建 apk wrapper 脚本，所有 apk 调用自动带上 --allow-untrusted
-          mkdir -p package/base-files/files/usr/bin
-          cat > package/base-files/files/usr/bin/apk-wrapper << 'WRAPPER'
-          #!/bin/sh
-          exec /usr/bin/apk.real --allow-untrusted "$@"
-          WRAPPER
-          chmod 755 package/base-files/files/usr/bin/apk-wrapper
-
-          # 创建启动脚本，开机时把 apk 替换为 wrapper
-          mkdir -p package/base-files/files/etc/init.d
-          cat > package/base-files/files/etc/init.d/S01apk-wrapper << 'INIT'
-          #!/bin/sh /etc/rc.common
-          START=01
-          start() {
-              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
-                  mv /usr/bin/apk /usr/bin/apk.real
-                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
-              fi
-          }
-          INIT
-          chmod 755 package/base-files/files/etc/init.d/S01apk-wrapper
-
-          echo "已成功禁用第三方软件包签名校验"
-
-    - name: 追加 APK 兼容架构 arm_cortex-a5_vfpv4
-      working-directory: ./openwrt
-      run: |
-          # 编译阶段修改固件里的 /etc/apk/arch
-          mkdir -p package/base-files/files/etc/apk
-          if ! grep -qxF "arm_cortex-a5_vfpv4" package/base-files/files/etc/apk/arch 2>/dev/null; then
-              echo "arm_cortex-a5_vfpv4" >> package/base-files/files/etc/apk/arch
-          fi
-          echo "已追加 arm_cortex-a5_vfpv4 到 /etc/apk/arch"
-    
     - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
       working-directory: ./openwrt
       run: |
@@ -279,7 +207,7 @@ jobs:
           $GITHUB_WORKSPACE/$DIY_P6_SH "${{ env.OWRT_IP }}" "${{ env.OWRT_SERVER_IP }}"
 
           #web控制台去掉443监听补丁
-          if [[ "${{ inputs.OWRT_TYPE }}" == *"OneCloud-docker"* ]]; then
+          if [[ "${{ env.OWRT_brun_type }}" == *"OneCloud-docker"* ]]; then
             cp -rf $GITHUB_WORKSPACE/ax6/uhttpd ./files/etc/config
           else
             #去掉多余的dhcp文件，让首次启动有dhcp服务
@@ -296,6 +224,90 @@ jobs:
             ${GITHUB_WORKSPACE}/${DIY_P5_SH}
           fi
 
+    - name: 禁用第三方软件包签名校验
+      working-directory: ./openwrt
+      run: |
+          # 创建 apk wrapper 脚本，所有 apk 调用自动带上 --allow-untrusted
+          mkdir -p package/base-files/files/usr/bin
+          cat > package/base-files/files/usr/bin/apk-wrapper << 'WRAPPER'
+          #!/bin/sh
+          exec /usr/bin/apk.real --allow-untrusted "$@"
+          WRAPPER
+          chmod 755 package/base-files/files/usr/bin/apk-wrapper
+
+          # 创建启动脚本，开机时把 apk 替换为 wrapper
+          mkdir -p package/base-files/files/etc/init.d
+          cat > package/base-files/files/etc/init.d/S01apk-wrapper << 'INIT'
+          #!/bin/sh /etc/rc.common
+          START=01
+          start() {
+              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
+                  mv /usr/bin/apk /usr/bin/apk.real
+                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
+              fi
+          }
+          INIT
+          chmod 755 package/base-files/files/etc/init.d/S01apk-wrapper
+
+          # === 双保险：同时写入 ./files/ 目录（顶层覆盖目录，构建时优先级更高） ===
+          mkdir -p ./files/usr/bin
+          cat > ./files/usr/bin/apk-wrapper << 'WRAPPER2'
+          #!/bin/sh
+          exec /usr/bin/apk.real --allow-untrusted "$@"
+          WRAPPER2
+          chmod 755 ./files/usr/bin/apk-wrapper
+
+          mkdir -p ./files/etc/init.d
+          cat > ./files/etc/init.d/S01apk-wrapper << 'INIT2'
+          #!/bin/sh /etc/rc.common
+          START=01
+          start() {
+              if [ -x /usr/bin/apk ] && [ ! -L /usr/bin/apk ]; then
+                  mv /usr/bin/apk /usr/bin/apk.real
+                  ln -sf /usr/bin/apk-wrapper /usr/bin/apk
+              fi
+          }
+          INIT2
+          chmod 755 ./files/etc/init.d/S01apk-wrapper
+
+          echo "已成功禁用第三方软件包签名校验（双保险）"
+
+    - name: 追加 APK 兼容架构 arm_cortex-a5_vfpv4
+      working-directory: ./openwrt
+      run: |
+          # 编译阶段修改固件里的 /etc/apk/arch
+          mkdir -p package/base-files/files/etc/apk
+          if ! grep -qxF "arm_cortex-a5_vfpv4" package/base-files/files/etc/apk/arch 2>/dev/null; then
+              echo "arm_cortex-a5_vfpv4" >> package/base-files/files/etc/apk/arch
+          fi
+          # === 双保险：同时写入 ./files/ 目录 ===
+          mkdir -p ./files/etc/apk
+          if ! grep -qxF "arm_cortex-a5_vfpv4" ./files/etc/apk/arch 2>/dev/null; then
+              echo "arm_cortex-a5_vfpv4" >> ./files/etc/apk/arch
+          fi
+          echo "已追加 arm_cortex-a5_vfpv4 到 /etc/apk/arch（双保险）"
+    
+    - name: 还原默认开机启动脚本 rc.local
+      working-directory: ./openwrt
+      run: |
+          # 强制写入纯净的 rc.local，覆盖第三方插件的修改
+          cat > package/base-files/files/etc/rc.local << 'EOF'
+          #!/bin/sh /etc/rc.common
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          exit 0
+          EOF
+          chmod 755 package/base-files/files/etc/rc.local
+          # === 双保险：同时覆盖 ./files/ 目录中的rc.local ===
+          cat > ./files/etc/rc.local << 'EOF2'
+          #!/bin/sh /etc/rc.common
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          exit 0
+          EOF2
+          chmod 755 ./files/etc/rc.local
+          echo "默认启动脚本已还原（双保险）"
+    
     - name: 下载编译环境
       working-directory: ./openwrt
       run: |
@@ -399,7 +411,7 @@ jobs:
         echo "=== 最终发布文件 ==="
         ls -lh
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "::set-output name=status::success"
+        echo "status=success" >> $GITHUB_OUTPUT
 
         #信息
         export OWRT_DATE=$(TZ=UTC-8 date +"%y.%m.%d_%H.%M.%S")
