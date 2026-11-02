@@ -1,58 +1,19 @@
-# openwrt-onecloud-玩客云三代(WS1608)<br>
-[![build](https://img.shields.io/github/actions/workflow/status/rmoyulong/OneCloud_OpenWrt/all-quiker.yml)](https://github.com/rmoyulong/OneCloud_OpenWrt/actions/workflows/all-quiker.yml) [![downloads](https://img.shields.io/github/downloads/rmoyulong/OneCloud_OpenWrt/total)](https://github.com/rmoyulong/OneCloud_OpenWrt/releases) [![downloads@latest](https://img.shields.io/github/downloads/rmoyulong/OneCloud_OpenWrt/latest/total)](https://github.com/rmoyulong/OneCloud_OpenWrt/releases/latest)<br>
+本代码FORK自 https://github.com/rmoyulong， 感谢rmoyulong及相应的各路大神
 
-登录192.168.8.59
+# onecloud-immortalwrt 玩客云三代(WS1608)<br>
+
+1、纯净版immortalwrt,不含任何插件
+
+2、可以使用相应内核版本的immortalwrt官方软件源
+
+3、支持安装第三方插件，如lucky,easytier, openclash等
+
+使用双USB公头线刷机: 双公头的USB线连接电脑和玩客云，使用USB_Burning_Tool刷机。<br>
+
+登录192.168.8.59 或者查询路由器确认IP
 
 ssh登录
 
 root<br>
 password<br>
 
-注解：<br>
-1.使用双USB公头线刷机: 双公头的USB线连接电脑和玩客云，使用USB_Burning_Tool刷机。<br>
-2.使用rufus写盘启动：将IMG用rufus等写盘工具烧录到U盘上，插入玩客云USB口启动。玩客云必须使用使用USB_Burning_Tool刷过eMMC.burn.img<br>
-eMMC.burn.img下载地址： https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_22.17.50/eMMC.burn.img<br>
-<br>
-USB_Burning_Tool下载地址： https://xd1314.lanzoul.com/iXHbz17bqjhc<br>
-
-
-把immortalwrt-meson-meson8b-thunder-onecloud-rootfs.tar.gz改名op.tar.gz <br>
-ssh armbian输入以下命令 <br>
-1.ip link set eth0 promisc on <br>
-2.docker network create -d macvlan --subnet=192.168.31.0/24 --gateway=192.168.31.1 -o parent=eth0 macnet <br>
-[↑自己根据 盒子 所在网段修改，如：盒子IP:192.168.1.175，则192.168.31.0/24 改成 192.168.1.0/24，192.168.31.1改成主路由地址]<br>
-3.docker import op.tar.gz onecloud_openwrt <br>
-4.docker run --restart always --name onecloud -d --network macnet --ip 192.168.31.110 --privileged onecloud_openwrt /sbin/init <br>
-5.修改创建的openwrt 默认lan口配置<br>
-(须结合实际网络情况，不能照抄配置)<br>
-vi etc/config/network<br>
-
-[按下键盘 Ins 键切至输入状态]<br>
-config interface 'loopback'<br>
-option ifname 'lo'<br>
-option proto 'static'<br>
-option ipaddr '127.0.0.1'<br>
-option netmask '255.0.0.0'<br>
-<br>
-config globals 'globals'<br>
-<br>
-config interface 'lan'<br>
-option type 'bridge'<br>
-option ifname 'eth0'<br>
-option proto 'static'<br>
-option ipaddr '192.168.8.59' # 填写openwrt容器的IP<br>
-option netmask '255.255.255.0'<br>
-option getway '192.168.8.1' # 修改为你自己主路由的IP<br>
-option dns '192.168.8.1' # DNS 可填主路由IP 也可填公共DNS<br>
-<br>
-[按下键盘 Esc 键退出输入状态，英文键盘输入 :wq 回车 保存退出]<br>
-<br>
-重启容器网络服务<br>
-/etc/init.d/network restart<br>
-<br>
-退出容器<br>
-exit<br>
----------------------------------------------------------------------------<br>
-
-启动命令在/etc/rc.local中修改<br>
-并赋予下载目录777权限<br>
