@@ -3,7 +3,7 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: 22.onecloud-immortalwrt25.12更新包管理器&DHCP
+name: 22.onecloud-openwrt25.12更新包管理器&DHCP
 on:
   workflow_dispatch:
     inputs:
@@ -11,14 +11,17 @@ on:
         description: '选择源码Tag版本'
         required: true
         type: choice
-        default: v25.12.2
+        default: v25.12.6
         options:
+          - v25.12.5
+          - v25.12.4
+          - v25.12.3
           - v25.12.2
           - v25.12.1
           - v25.12.0
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_URL: https://github.com/openwrt/openwrt
   REPO_BRANCH: ${{ github.event.inputs.REPO_VERSION }}
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
