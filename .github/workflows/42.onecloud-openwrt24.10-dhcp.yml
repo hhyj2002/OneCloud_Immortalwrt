@@ -14,6 +14,7 @@ on:
         type: choice
         default: v24.10.8
         options:
+          - v24.10.8
           - v24.10.7
           - v24.10.6
           - v24.10.5
