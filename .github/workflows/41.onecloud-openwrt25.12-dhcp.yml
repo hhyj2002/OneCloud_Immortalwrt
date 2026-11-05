@@ -13,6 +13,7 @@ on:
         type: choice
         default: v25.12.6
         options:
+          - v25.12.6
           - v25.12.5
           - v25.12.4
           - v25.12.3
