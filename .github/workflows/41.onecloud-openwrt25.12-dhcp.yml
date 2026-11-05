@@ -379,7 +379,7 @@ jobs:
           cd openwrt
           mkdir -p outfile
           # 1. 先精确找到真正的直刷包和校验文件（忽略任何已经带前缀的，防止死循环）
-          BURN_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
+          BURN_NAME="OneCloud_${KERNEL_VER}_openwrt-amlogic-meson8b-thunder-onecloud-ext4-emmc.burn.img.xz"
 
           # 查找原始的 xz 包
           for file in $(find bin/targets/ -type f -name "*burn.img.xz" ! -name "OneCloud_*"); do
@@ -405,7 +405,7 @@ jobs:
           cd outfile
           KERNEL_VER=${{ env.KERNEL_VER }}
           # ===== 4. 重命名 rootfs 在线升级包 =====
-          ROOTFS_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
+          ROOTFS_NAME="OneCloud_${KERNEL_VER}_openwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
           for file in *rootfs.tar.gz; do
             [ -f "$file" ] || continue
             [ "$file" = "$ROOTFS_NAME" ] && continue
