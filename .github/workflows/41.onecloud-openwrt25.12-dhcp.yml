@@ -3,7 +3,7 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: 41.onecloud-openwrt25.12更新包管理器&DHCP
+name: 41.Onecloud-Openwrt25.12更新包管理器&DHCP
 on:
   workflow_dispatch:
     inputs:
