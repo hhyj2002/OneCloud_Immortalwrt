@@ -82,7 +82,7 @@ jobs:
           echo ">>> 基础包安装完成"
           # 静默执行官方脚本，失败时重跑一次并打印日志
           sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh) > /dev/null 2>&1' || \
-           sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh)'
+          sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh)'
           echo ">>> 官方环境脚本执行完成"
           sudo -E systemctl daemon-reload
           sudo timedatectl set-timezone "$TZ"
