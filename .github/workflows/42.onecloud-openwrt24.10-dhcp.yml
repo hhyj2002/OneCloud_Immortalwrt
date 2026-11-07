@@ -244,8 +244,8 @@ jobs:
       - name: 下载编译环境
         working-directory: ./openwrt
         run: |
-          sed -i 's|https://sources.openwrt.org|https://mirrors.tuna.tsinghua.edu.cn/openwrt|g' include/内部工具.mk
-          sed -i 's|https://cdn.kernel.org/pub/linux/kernel|https://mirrors.tuna.tsinghua.edu.cn/kernel|g' include/内部工具.mk
+          sed -i 's|https://sources.openwrt.org|https://mirrors.tuna.tsinghua.edu.cn/openwrt|g' include/download.mk
+          sed -i 's|https://cdn.kernel.org/pub/linux/kernel|https://mirrors.tuna.tsinghua.edu.cn/kernel|g' include/download.mk
 
           # 确保生成 rootfs.tar.gz 在线升级包
           if grep -q "CONFIG_TARGET_ROOTFS_TARGZ" .config; then
