@@ -256,7 +256,7 @@ jobs:
           make defconfig
 
           # 并行下载，失败降级单线程重试
-          make 内部工具 -j$(nproc) V=s || make 内部工具 -j1 V=s
+          make download -j$(nproc) V=s || make download -j1 V=s
 
           # 清理下载不完整(<1k)的残包，强制重新拉取
           find dl -size -1k -exec rm -f {} \;
