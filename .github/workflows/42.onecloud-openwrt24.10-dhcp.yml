@@ -120,10 +120,6 @@ jobs:
           rm -rf target/linux/amlogic
           mv $GITHUB_WORKSPACE/lede6.6/target/linux/amlogic target/linux
           chmod -Rf 755 target/linux/amlogic
-          # 新增：覆盖 generic 配置，避免新内核符号 (NEW) 导致 syncconfig 失败
-          [ -f $GITHUB_WORKSPACE/lede6.6/target/linux/generic/config-6.6 ] && cp -f \
-          $GITHUB_WORKSPACE/lede6.6/target/linux/generic/config-6.6 \
-          target/linux/generic/config-6.6
           ls -l target/linux/amlogic
           echo "amlogic6.6"
 
