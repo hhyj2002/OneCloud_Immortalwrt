@@ -62,24 +62,30 @@ jobs:
       - name: 检查项目
         uses: actions/checkout@main
 
-      - name: 初始化编译环境
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo -E apt -yqq purge firefox
-          sudo -E apt -yqq update
-          sudo -E apt -yqq full-upgrade
-          sudo -E apt -yqq autoremove --purge
-          sudo -E apt -yqq autoclean
-          sudo -E apt -yqq clean
-          sudo -E apt -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev
-          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo -E systemctl daemon-reload
-          sudo timedatectl set-timezone "$TZ"
-          sudo mkdir -p /workdir
-          sudo chown $USER:$GROUPS /workdir
-          echo "status=success" >> ${GITHUB_OUTPUT}
-          df -Th
+     - name: 初始化编译环境
+       timeout-minutes: 20
+       env:
+         DEBIAN_FRONTEND: noninteractive
+       run: |
+         sudo -E apt -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -yqq purge firefox
+         sudo -E apt -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -yqq update
+         sudo -E apt -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -yqq full-upgrade
+         sudo -E apt -yqq autoremove --purge
+         sudo -E apt -yqq autoclean
+         sudo -E apt -yqq clean
+         sudo -E apt -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev
+         echo ">>> 基础包安装完成"
+         # 静默执行官方脚本，失败时重跑一次并打印日志
+         sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh) > /dev/null 2>&1' || \
+           sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh)'
+         echo ">>> 官方环境脚本执行完成"
+         sudo -E systemctl daemon-reload
+         sudo timedatectl set-timezone "$TZ"
+         sudo mkdir -p /workdir
+         sudo chown $USER:$GROUPS /workdir
+         echo "status=success" >> ${GITHUB_OUTPUT}
+         df -h /
+         echo ">>> 初始化编译环境结束"
 
       - name: 初始化变量
         run: |
