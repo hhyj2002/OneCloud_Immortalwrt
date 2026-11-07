@@ -74,7 +74,7 @@ jobs:
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
           sudo -E apt -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -yqq install dos2unix libfuse-dev \
-          libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 \
+          libxml2 python3-setools libffi-dev pkg-config lib32z1-dev libpcre3 \
           libpcre3-dev libncurses-dev ncurses-dev \
           build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
           gettext git libncurses5-dev libncursesw5-dev libssl-dev make \
