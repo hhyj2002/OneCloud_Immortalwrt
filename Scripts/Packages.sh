@@ -48,11 +48,11 @@ UPDATE_PACKAGE() {
 # UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
 
 # ========== 主题类（保留，不在"服务"/"网络存储"下） ==========
-UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
-UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
-UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
-UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
-UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
+# UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
+# UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
+# UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
+# UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
+# UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
 
 # ========== 以下包可能出现在"服务"或"网络存储"菜单下，保守策略全部注释掉 ==========
 
@@ -91,14 +91,14 @@ UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
 # OpenList2 文件列表（可能出现在"网络存储"下）
 #UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
 
-PartExp 分区扩展（可能出现在"网络存储"下）
-UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
+# PartExp 分区扩展（可能出现在"网络存储"下）
+# UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
 
 # Qbittorrent BT下载（可能出现在"网络存储"下）
 #UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
 
-QModem 调制解调器（可能出现在"网络"下）
-UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
+# QModem 调制解调器（可能出现在"网络"下）
+# UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
 
 # QuickFile 文件传输（可能出现在"网络存储"下）
 #UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
