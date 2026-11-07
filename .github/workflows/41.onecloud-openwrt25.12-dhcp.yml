@@ -65,8 +65,11 @@ jobs:
           sudo -E apt -yqq autoremove --purge
           sudo -E apt -yqq autoclean
           sudo -E apt -yqq clean
-          sudo -E apt -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools \
-          libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev 
+          sudo -E apt -yqq install dos2unix libfuse-dev \
+          libxml2 python3-setools libffi-dev pkg-config lib32z1-dev libpcre3 \
+          libpcre3-dev libncurses-dev ncurses-dev \
+          build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+          gettext git libncurses5-dev libncursesw5-dev libssl-dev make  
           sudo bash -c 'bash <(curl -sL https://build-scripts.openwrt.org/init_build_environment.sh)'
           sudo -E systemctl daemon-reload
           sudo timedatectl set-timezone "$TZ"
