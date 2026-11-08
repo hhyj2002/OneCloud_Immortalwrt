@@ -261,6 +261,7 @@ jobs:
           echo "=== 已备份的 rootfs 包 ==="
           ls -lh /workdir/rootfs_backup/
 
+
     - name: 制作直刷包
        # 注意：这里不要再写 "|| true"。
        # convert2.sh 内部已做“去回读校验 + 成品自检”，一旦自检不通过就必须让
@@ -273,6 +274,7 @@ jobs:
          chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
          dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
          $GITHUB_WORKSPACE/Scripts/convert2.sh
+
 
     - name: 校验直刷包结构(防空包/防回退)
       run: |
