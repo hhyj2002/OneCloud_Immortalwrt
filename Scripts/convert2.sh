@@ -48,7 +48,7 @@ prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
 burnimg=${prefix}.burn.img
 
 
-./AmlImg pack $burnimg burn_temp/
+./AmlImg pack $burnimg burn/
 
 
 
