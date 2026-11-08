@@ -50,7 +50,7 @@ burnimg=${prefix}.burn.img
 # 解包临时镜像，精准删掉 [LIST_VERIFY] 这一行，然后重打包
 ./AmlImg unpack $burnimg burn_temp/
 sed -i '/^\[LIST_VERIFY\]$/d' burn_temp/image.cfg
-./AmlImg pack $burnimg burn/
+./AmlImg pack $burnimg burn_temp/
 
 # 清理临时解包目录
 rm -rf burn_temp/
