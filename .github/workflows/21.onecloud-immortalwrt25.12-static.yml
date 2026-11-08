@@ -377,13 +377,12 @@ jobs:
           ls -lh /workdir/rootfs_backup/
 
     - name: 制作直刷包
-      # 注意：这里不要再写 "|| true"。
       # convert2.sh 内部已做“去回读校验 + 成品自检”，一旦自检不通过就必须让
       # 整个 job 失败，否则会把烧录时必报“校验错误”的坏包上传到 Release。
       env:
-          KEEP_VERIFY: '0'          # 0=去掉烧录后 SHA1 回读校验（解决“校验错误”）
-          DROP_VERIFY_ITEMS: '1'    # 1=同时丢弃容器里的 VERIFY 项
-          BOOT_SIZE_MB: '2000'      # boot 分区镜像大小，与原脚本保持一致
+        KEEP_VERIFY: '0'          # 0=去掉烧录后 SHA1 回读校验（解决“校验错误”）
+        DROP_VERIFY_ITEMS: '1'    # 1=同时丢弃容器里的 VERIFY 项
+        BOOT_SIZE_MB: '2000'      # boot 分区镜像大小，与原脚本保持一致
       run: |
           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
           dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
