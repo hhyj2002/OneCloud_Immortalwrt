@@ -46,9 +46,8 @@ EOF
 prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
 burnimg=${prefix}.burn.img
 
-# 删掉 VERIFY 校验行，并把 PARTITION 段搬进 NORMAL 段（去掉 [LIST_VERIFY]，数据全保留、sparse 标志不变）
+# 只删 VERIFY 校验行（这才是校验失败的元凶），PARTITION 段保持原样
 sed -i '/^VERIFY:/d' burn/commands.txt
-sed -i 's/^PARTITION:/NORMAL:/g' burn/commands.txt
 
 ./AmlImg pack $burnimg burn/
 for f in openwrt/bin/targets/*/*/*.burn.img; do
