@@ -44,12 +44,18 @@ PARTITION:boot:sparse:boot.simg
 PARTITION:rootfs:sparse:rootfs.simg
 EOF
 prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
+
 burnimg=${prefix}.burn.img
 
-# 只删 VERIFY 校验行（这才是校验失败的元凶），PARTITION 段保持原样
-sed -i '/^VERIFY:/d' burn/commands.txt
-
+# 解包临时镜像，精准删掉 [LIST_VERIFY] 这一行，然后重打包
+./AmlImg unpack $burnimg burn_temp/
+sed -i '/^\[LIST_VERIFY\]$/d' burn_temp/image.cfg
 ./AmlImg pack $burnimg burn/
+
+# 清理临时解包目录
+rm -rf burn_temp/
+
+# 压缩和生成校验文件
 for f in openwrt/bin/targets/*/*/*.burn.img; do
   sha256sum "$f" >"${f}.sha"
   xz -9 --threads=0 --compress "$f"
