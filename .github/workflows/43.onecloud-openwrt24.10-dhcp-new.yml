@@ -303,8 +303,8 @@ jobs:
           DROP_VERIFY_ITEMS: '1'    # 1=同时丢弃容器里的 VERIFY 项
           BOOT_SIZE_MB: '2000'      # boot 分区镜像大小，与原脚本保持一致
         run: |
-          chmod +x $GITHUB_WORKSPACE/Scripts/convert2-new.sh
-          dos2unix $GITHUB_WORKSPACE/Scripts/convert2-new.sh
+          chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
+          dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
           $GITHUB_WORKSPACE/Scripts/convert2-new.sh
 
       - name: 校验直刷包结构(防空包/防回退)
@@ -317,7 +317,7 @@ jobs:
           # 解压后回读容器，确认里面没有 [LIST_VERIFY] / VERIFY 项
           cp -f "$xzfile" /tmp/verify.burn.img.xz
           unxz -f /tmp/verify.burn.img.xz
-          $GITHUB_WORKSPACE/Scripts/convert2-new.sh check /tmp/verify.burn.img
+          $GITHUB_WORKSPACE/Scripts/convert2.sh check /tmp/verify.burn.img
           rm -f /tmp/verify.burn.img
 
       - name: 整理固件
