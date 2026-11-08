@@ -46,11 +46,7 @@ EOF
 prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
 
 burnimg=${prefix}.burn.img
-
-
 ./AmlImg pack $burnimg burn/
-
-
 
 # 压缩和生成校验文件
 for f in openwrt/bin/targets/*/*/*.burn.img; do
