@@ -47,16 +47,10 @@ prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
 
 burnimg=${prefix}.burn.img
 
-# 生成带 [LIST_VERIFY] 的初始固件
-./AmlImg pack $burnimg burn/
 
-# 解包临时镜像，精准删掉 [LIST_VERIFY] 这一行，然后重打包
-./AmlImg unpack $burnimg burn_temp/
-sed -i '/^\[LIST_VERIFY\]$/d' burn_temp/image.cfg
 ./AmlImg pack $burnimg burn_temp/
 
-# 清理临时解包目录
-rm -rf burn_temp/
+
 
 # 压缩和生成校验文件
 for f in openwrt/bin/targets/*/*/*.burn.img; do
