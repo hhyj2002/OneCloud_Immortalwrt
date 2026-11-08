@@ -1,10 +1,10 @@
 sudo apt install android-sdk-libsparse-utils
 ver="v0.3.2"
-curl -L -o ./AmlImg https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
-# curl -L -o ./AmlImg https://github.com/hhyj2002/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
+# curl -L -o ./AmlImg https://github.com/rmoyulong/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
+curl -L -o ./AmlImg https://github.com/hhyj2002/AmlImg/releases/download/$ver/AmlImg_${ver}_linux_amd64
 chmod +x ./AmlImg
-curl -L -o ./uboot.img https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
-# curl -L -o ./uboot.img https://github.com/hhyj2002/u-boot-onecloud/releases/download/Onecloud_Uboot_26.11.02_20.04.27/eMMC.burn.img
+# curl -L -o ./uboot.img https://github.com/rmoyulong/u-boot-onecloud/releases/download/Onecloud_Uboot_23.12.24_18.15.09/eMMC.burn.img
+curl -L -o ./uboot.img https://github.com/hhyj2002/u-boot-onecloud/releases/download/Onecloud_Uboot_26.11.02_20.04.27/eMMC.burn.img
 ./AmlImg unpack ./uboot.img burn/
 
 
