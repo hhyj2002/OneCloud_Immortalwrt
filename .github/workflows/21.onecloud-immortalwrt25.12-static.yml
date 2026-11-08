@@ -385,9 +385,9 @@ jobs:
         DROP_VERIFY_ITEMS: '1'    # 1=同时丢弃容器里的 VERIFY 项
         BOOT_SIZE_MB: '2000'      # boot 分区镜像大小，与原脚本保持一致
        run: |
-        chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
-        dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
-        $GITHUB_WORKSPACE/Scripts/convert2.sh
+           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
+           dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
+           $GITHUB_WORKSPACE/Scripts/convert2.sh
 
     - name: 校验直刷包结构(防空包/防回退)
       run: |
