@@ -7,9 +7,6 @@ chmod +x ./AmlImg
 curl -L -o ./uboot.img https://github.com/hhyj2002/u-boot-onecloud/releases/download/Onecloud_Uboot_26.11.02_20.04.27/eMMC.burn.img
 ./AmlImg unpack ./uboot.img burn/
 
-# 解包后，精准删除image.cfg文件里面的 [LIST_VERIFY] 这一行，保留其余所有内容和顺序
-sed -i '/^\[LIST_VERIFY\]$/d' burn/image.cfg
-
 
 gunzip openwrt/bin/targets/*/*/*.gz
 diskimg=$(ls openwrt/bin/targets/*/*/*.img)
@@ -48,6 +45,11 @@ PARTITION:rootfs:sparse:rootfs.simg
 EOF
 prefix=$(ls openwrt/bin/targets/*/*/*.img | sed 's/\.img$//')
 burnimg=${prefix}.burn.img
+
+# 删掉 VERIFY 校验行，并把 PARTITION 段搬进 NORMAL 段（去掉 [LIST_VERIFY]，数据全保留、sparse 标志不变）
+sed -i '/^VERIFY:/d' burn/commands.txt
+sed -i 's/^PARTITION:/NORMAL:/g' burn/commands.txt
+
 ./AmlImg pack $burnimg burn/
 for f in openwrt/bin/targets/*/*/*.burn.img; do
   sha256sum "$f" >"${f}.sha"
