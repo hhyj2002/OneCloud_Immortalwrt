@@ -7,6 +7,10 @@ chmod +x ./AmlImg
 curl -L -o ./uboot.img https://github.com/hhyj2002/u-boot-onecloud/releases/download/Onecloud_Uboot_26.11.02_20.04.27/eMMC.burn.img
 ./AmlImg unpack ./uboot.img burn/
 
+# 解包后，精准删除image.cfg文件里面的 [LIST_VERIFY] 这一行，保留其余所有内容和顺序
+sed -i '/^\[LIST_VERIFY\]$/d' burn/image.cfg
+
+
 gunzip openwrt/bin/targets/*/*/*.gz
 diskimg=$(ls openwrt/bin/targets/*/*/*.img)
 loop=$(sudo losetup --find --show --partscan $diskimg)
