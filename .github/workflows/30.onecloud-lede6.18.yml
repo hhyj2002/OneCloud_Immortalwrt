@@ -207,10 +207,10 @@ jobs:
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/rc.*
           chmod -Rf 755 $GITHUB_WORKSPACE/$OWRT_FILES/etc/init.d/*
           
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/etc/aria2
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2
-          chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2/download
-          chmod -R 755 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/share
+          #chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/etc/aria2
+          #chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2
+          #chmod -R 777 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/aria2/download
+          #chmod -R 755 $GITHUB_WORKSPACE/$OWRT_FILES/mnt/sda1/share
           
           rm -rf ./tmp* ./.config*
           if [ -f "$GITHUB_WORKSPACE/$OWRT_CFG" ]; then
