@@ -32,9 +32,9 @@ env:
   CONFIG_FILE: Config/onecloud-immortalwrt24.10.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
-  DIY_P3_SH: Scripts/false
-  DIY_P4_SH: Scripts/false
-  DIY_P5_SH: Scripts/false
+  #DIY_P3_SH: Scripts/false
+  #DIY_P4_SH: Scripts/false
+  #DIY_P5_SH: Scripts/false
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.6
@@ -103,7 +103,7 @@ jobs:
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
-          echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
+          #echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
           echo "OWRT_CFG=$OWRT_CFG" >> $GITHUB_ENV
