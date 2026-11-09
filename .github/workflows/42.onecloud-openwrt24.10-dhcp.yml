@@ -305,7 +305,7 @@ jobs:
         run: |
           chmod +x $GITHUB_WORKSPACE/Scripts/convert2.sh
           dos2unix $GITHUB_WORKSPACE/Scripts/convert2.sh
-          $GITHUB_WORKSPACE/Scripts/convert2-new.sh
+          $GITHUB_WORKSPACE/Scripts/convert2.sh
 
       - name: 校验直刷包结构(防空包/防回退)
         run: |
