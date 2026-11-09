@@ -28,9 +28,9 @@ env:
   CONFIG_FILE: Config/onecloud-lede6.18.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
-  DIY_P3_SH: Scripts/false
-  # DIY_P4_SH: Scripts/openclash32.sh
-  DIY_P5_SH: Scripts/false
+  #DIY_P3_SH: Scripts/false
+  #DIY_P4_SH: Scripts/openclash32.sh
+  #DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
@@ -113,7 +113,7 @@ jobs:
           echo "OWRT_SERVER_IP=$OWRT_SERVER_IP" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
-          echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV          
+          #echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV          
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           
           echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
@@ -192,11 +192,11 @@ jobs:
       run: |          
           $GITHUB_WORKSPACE/$DIY_P2_SH
          
-          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
-          fi 
+          #if [[ "${DIY_P3_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P3_SH}
+          #fi 
                
     - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
       working-directory: ./openwrt
@@ -243,11 +243,11 @@ jobs:
           
           # $GITHUB_WORKSPACE/$DIY_P4_SH
           
-          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
-          fi 
+          #if [[ "${DIY_P5_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P5_SH}
+          #fi 
         
     - name: 下载编译环境
       working-directory: ./openwrt
