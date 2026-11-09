@@ -180,7 +180,7 @@ jobs:
             rm -rf ./files/etc/config/dhcp
           fi
           #openclash 32
-          $GITHUB_WORKSPACE/$DIY_P4_SH
+          #$GITHUB_WORKSPACE/$DIY_P4_SH
           #python3.patch.sh
           #if [[ "${DIY_P5_SH}" == *"false"* ]]; then
           #  echo "不需要执行此选项"
