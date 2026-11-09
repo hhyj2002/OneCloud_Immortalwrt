@@ -24,9 +24,9 @@ env:
   CONFIG_FILE: Config/onecloud-immortalwrt25.12.config
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
-  DIY_P3_SH: Scripts/false
+  #DIY_P3_SH: Scripts/false
   #DIY_P4_SH: Scripts/openclash32.sh
-  DIY_P5_SH: Scripts/false
+  #DIY_P5_SH: Scripts/false
   OWRT_NAME: OneCloud
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.12
@@ -81,7 +81,7 @@ jobs:
           echo "OWRT_NAME=$OWRT_NAME" >> $GITHUB_ENV
           echo "DIY_P1_SH=$DIY_P1_SH" >> $GITHUB_ENV
           echo "DIY_P2_SH=$DIY_P2_SH" >> $GITHUB_ENV
-          echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
+          #echo "DIY_P3_SH=$DIY_P3_SH" >> $GITHUB_ENV
           echo "OWRT_FILES=$OWRT_FILES" >> $GITHUB_ENV
           echo "OWRT_brun_type=$OWRT_brun_type" >> $GITHUB_ENV
           echo "OWRT_CFG=$OWRT_CFG" >> $GITHUB_ENV
@@ -138,11 +138,11 @@ jobs:
         working-directory: ./openwrt
         run: |
           $GITHUB_WORKSPACE/$DIY_P2_SH
-          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
-          fi
+          #if [[ "${DIY_P3_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P3_SH}
+          #fi
 
       - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
         working-directory: ./openwrt
@@ -174,11 +174,11 @@ jobs:
           #openclash 32
           #$GITHUB_WORKSPACE/$DIY_P4_SH
           #python3.patch.sh
-          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
-          fi
+          #if [[ "${DIY_P5_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P5_SH}
+          #fi
 
       - name: 系统初始化：禁用签名校验 + 网络/DHCP + 扩容 + APK架构
         working-directory: ./openwrt
