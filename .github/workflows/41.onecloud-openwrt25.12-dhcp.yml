@@ -146,11 +146,11 @@ jobs:
         working-directory: ./openwrt
         run: |
           $GITHUB_WORKSPACE/$DIY_P2_SH
-          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
-          fi
+          #if [[ "${DIY_P3_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P3_SH}
+          #fi
 
       - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
         working-directory: ./openwrt
@@ -176,17 +176,17 @@ jobs:
           if [[ "${{ env.OWRT_brun_type }}" == *"OneCloud-docker"* ]]; then
             cp -rf $GITHUB_WORKSPACE/ax6/uhttpd ./files/etc/config
           else
-            #去掉多余的dhcp文件，让首次启动有dhcp服务
+          #去掉多余的dhcp文件，让首次启动有dhcp服务
             rm -rf ./files/etc/config/dhcp
           fi
           #openclash 32
           $GITHUB_WORKSPACE/$DIY_P4_SH
           #python3.patch.sh
-          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
-          fi
+          #if [[ "${DIY_P5_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P5_SH}
+          #fi
 
       - name: 系统初始化：禁用签名校验 + 网络/DHCP + 扩容 + APK架构
         working-directory: ./openwrt
