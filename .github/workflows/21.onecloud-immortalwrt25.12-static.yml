@@ -38,7 +38,7 @@ env:
   DIY_P1_SH: Scripts/setup.sh
   DIY_P2_SH: Scripts/Settings.sh
   DIY_P3_SH: Scripts/false
-  DIY_P4_SH: Scripts/openclash32.sh
+  #DIY_P4_SH: Scripts/openclash32.sh
   DIY_P5_SH: Scripts/false
   DIY_P6_SH: Scripts/edit_files.sh
   OWRT_IP: ${{ github.event.inputs.OP_IP }}
@@ -206,7 +206,7 @@ jobs:
           fi
 
           #openclash 32
-          $GITHUB_WORKSPACE/$DIY_P4_SH
+          #$GITHUB_WORKSPACE/$DIY_P4_SH
 
           #python3.patch.sh
           if [[ "${DIY_P5_SH}" == *"false"* ]]; then
