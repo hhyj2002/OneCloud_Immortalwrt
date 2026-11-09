@@ -165,12 +165,16 @@ jobs:
             cat files/etc/rc.local
           fi
           #web控制台去掉443监听补丁
-          if [[ "${{ env.OWRT_brun_type }}" == *"OneCloud-docker"* ]]; then
-            cp -rf $GITHUB_WORKSPACE/ax6/uhttpd ./files/etc/config
-          else
-            #去掉多余的dhcp文件，让首次启动有dhcp服务
-            rm -rf ./files/etc/config/dhcp
-          fi
+          #if [[ "${{ env.OWRT_brun_type }}" == *"OneCloud-docker"* ]]; then
+          #  cp -rf $GITHUB_WORKSPACE/ax6/uhttpd ./files/etc/config
+          #else
+          #  #去掉多余的dhcp文件，让首次启动有dhcp服务
+          #  rm -rf ./files/etc/config/dhcp
+          #fi
+          #去掉多余的dhcp文件，让首次启动有dhcp服务
+          rm -rf ./files/etc/config/dhcp
+
+          
           #openclash 32
           #$GITHUB_WORKSPACE/$DIY_P4_SH
           #python3.patch.sh
