@@ -152,11 +152,11 @@ jobs:
         working-directory: ./openwrt
         run: |
           $GITHUB_WORKSPACE/$DIY_P2_SH
-          if [[ "${DIY_P3_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P3_SH}
-          fi
+          #if [[ "${DIY_P3_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P3_SH}
+          #fi
 
       - name: 自定义IMAGS格式 - meson8b cortex-a5+vfpv4
         working-directory: ./openwrt
@@ -182,17 +182,17 @@ jobs:
           # 去掉多余的 dhcp 文件，让首次启动使用默认 dhcp 服务
           rm -f ./files/etc/config/dhcp
           #openclash 32
-          if [[ "${DIY_P4_SH}" == *"false"* ]]; then
-            echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
-          else
-            $GITHUB_WORKSPACE/$DIY_P4_SH
-          fi
+          #if [[ "${DIY_P4_SH}" == *"false"* ]]; then
+          #  echo "跳过 OpenClash 脚本 (DIY_P4_SH)"
+          #else
+          # $GITHUB_WORKSPACE/$DIY_P4_SH
+          #fi
           #python3.patch.sh
-          if [[ "${DIY_P5_SH}" == *"false"* ]]; then
-            echo "不需要执行此选项"
-          else
-            ${GITHUB_WORKSPACE}/${DIY_P5_SH}
-          fi
+          #if [[ "${DIY_P5_SH}" == *"false"* ]]; then
+          #  echo "不需要执行此选项"
+          #else
+          #  ${GITHUB_WORKSPACE}/${DIY_P5_SH}
+          #fi
 
       - name: 系统初始化：预置DHCP网络 + 首次启动自动扩容
         working-directory: ./openwrt
