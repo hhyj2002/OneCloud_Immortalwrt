@@ -3,33 +3,37 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: 32.onecloud-lede直刷包编译DHCP-自选内核
+name: 32.onecloud-lede直刷包编译DHCP自选内核
 
 on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: '内核版本：6.6 系列=ImmortalWrt 24.10（稳定，推荐）；6.12=ImmortalWrt 25.12（需派生适配，实验性）'
+        description: '内核版本：6.6/6.12 均可选；含 OpenWrt 25.12.0~6 与 ImmortalWrt 25.12.0~2 全部发行版同款内核（自动裁剪不兼容补丁）'
         required: true
         type: choice
-        # 6.6 = ImmortalWrt 24.10 稳定版那条线，amlogic 有官方 config-6.6 / patches-6.6；
-        # 6.12 = ImmortalWrt 25.12 那条线，amlogic 没适配，由 6.6 打底 + 6.18 部分补丁派生。
-        # 不再提供 6.18：lede 的默认值，太新，kmod、openclash 等依赖常编不过。
-        default: '6.6.133'
+        # 实测结论（lede master 补丁集在对应内核源码上逐个应用验证）：
+        #   6.6.160/161/162 → 0 失败；低于 .160 → 补丁大面积不兼容，已移除
+        #   6.12.116(lede 默认) → 0 失败
+        #   OpenWrt 25.12.0/1/2 = 6.12.71/74/74；25.12.3 = 6.12.85；25.12.4 = 6.12.87；
+        #   25.12.5 = 6.12.94；25.12.6 = 6.12.112（最新，仅 1 个 mtk 补丁需剔除）
+        #   ImmortalWrt 25.12.0/1/2 = 6.12.87/94/103
+        #   非默认小版本 → 由步骤里的「自动补丁裁剪」剔除打不上的补丁后可编译
+        default: '6.6.162'
         options:
-          # ImmortalWrt v24.10.6 发行版使用的内核，amlogic 官方适配，最稳
-          - '6.6.133'
-          # ImmortalWrt openwrt-24.10 分支当前的内核
-          - '6.6.159'
-          # lede master 里 6.6 系列的当前版本，与 amlogic/patches-6.6 完全同步
-          - '6.6.162'
+          # ---- 6.6 LTS（= ImmortalWrt 24.10 同一条 LTS 线，amlogic 官方适配）----
+          - '6.6.162'   # lede master 当前 6.6，与补丁集完全同步，最稳
           - '6.6.161'
           - '6.6.160'
-          - '6.6.158'
-          # ImmortalWrt v25.12.2 发行版使用的内核。amlogic 无官方适配，
-          # 由 6.6 的 config/patches + 6.18 的 300/400/901 + 手工移植的 904 派生，
-          # 已在 linux-6.12.103 原始源码上验证 10 个补丁全部干净应用。
-          - '6.12.103'
+          # ---- 6.12 LTS（lede 默认 6.12 为 .116）----
+          - '6.12.116'  # lede master 当前 6.12，0 补丁失败，6.12 里最稳
+          - '6.12.112'  # = OpenWrt v25.12.6（最新），实测仅 1 个 mtk 补丁需剔除
+          - '6.12.103'  # = ImmortalWrt v25.12.2
+          - '6.12.94'   # = ImmortalWrt v25.12.1 / OpenWrt v25.12.5
+          - '6.12.87'   # = ImmortalWrt v25.12.0 / OpenWrt v25.12.4
+          - '6.12.85'   # = OpenWrt v25.12.3（剔除 23 个补丁，含 3 个 netfilter/bridge 通用补丁）
+          - '6.12.74'   # = OpenWrt v25.12.1 / v25.12.2
+          - '6.12.71'   # = OpenWrt v25.12.0
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -273,6 +277,52 @@ jobs:
           fi
         fi
 
+        # 6.6 系列低于 .160 与 lede 的补丁集不兼容（在对应内核源码上实测：
+        # 6.6.133 失败 63 个补丁、6.6.158/159 失败 6 个、6.6.160/161/162 全过）。
+        # 在开工前拦下，免得编译十小时后在打补丁阶段才炸。
+        if [ "$MAJOR" = "6.6" ] && [ "${PATCH#\.}" -lt 160 ] 2>/dev/null; then
+          echo "::error::6.6 低于 .160 与 lede 补丁集不兼容（实测 6.6.133 有 63 个补丁打不上），最低可用 6.6.160"
+          exit 1
+        fi
+
+        # ================================================================
+        # 自动补丁裁剪：所选小版本不是 lede 默认时（6.6 默认 .162、6.12 默认 .116），
+        # lede 的补丁集可能有 hunks 打不上（lede 的补丁按自己的默认小版本维护）。
+        # 这里下载对应内核源码、按 OpenWrt 的顺序(backport→pending→hack→板级)
+        # 逐个应用：generic 补丁打不上就剔除（实测 25.12 的小版本被剔除的几乎
+        # 全是 mediatek/mtk 等与玩客云无关的硬件补丁）；amlogic 板级补丁打不上
+        # 同样剔除但会显著警告。
+        # ================================================================
+        P_NUM="${PATCH#\.}"
+        DEFAULT_PATCH=$(awk -v k="LINUX_VERSION-${MAJOR}" '$1==k{print $3}' "include/kernel-${MAJOR}" 2>/dev/null | tr -d '.')
+        if [ "$P_NUM" != "$DEFAULT_PATCH" ]; then
+          echo "::warning::${FULL} 不是 lede 默认的 ${MAJOR}.${DEFAULT_PATCH}，开始自动剔除不兼容的内核补丁（约需 2~3 分钟）..."
+          TMPK=$(mktemp -d /tmp/ksrc.XXXXXX)
+          curl -fsSL --retry 3 --max-time 600 "https://cdn.kernel.org/pub/linux/kernel/v${MAJOR%%.*}.x/linux-${FULL}.tar.xz" | tar -xJ -C "$TMPK" --strip-components=1
+          # 复制 target 通用 files（含 onecloud 的 dts，902 补丁要用）
+          cp -a target/linux/amlogic/files/. "$TMPK"/ 2>/dev/null || true
+          for dir in target/linux/generic/backport-${MAJOR} target/linux/generic/pending-${MAJOR} target/linux/generic/hack-${MAJOR} "${PATCHDIR}"; do
+            [ -d "$dir" ] || continue
+            for f in $(ls $dir/*.patch 2>/dev/null | sort); do
+              ABS="$PWD/$f"
+              if (cd "$TMPK" && patch -p1 -f --no-backup-if-mismatch --silent < "$ABS" >/dev/null 2>&1); then
+                continue
+              fi
+              rm -f "$f"
+              case "$dir" in
+                *generic*)
+                  echo "::warning::已剔除与 ${FULL} 不兼容的补丁: $(basename $f)（多为 mediatek/mtk 等其它硬件的补丁）"
+                  ;;
+                *)
+                  echo "::warning::板级补丁 $(basename $f) 在 ${FULL} 上无法应用，已剔除。若你的设备依赖它，请改选 ${MAJOR}.${DEFAULT_PATCH}"
+                  ;;
+              esac
+            done
+          done
+          rm -rf "$TMPK"
+          echo "✅ 补丁裁剪完成，剩余补丁均已验证可在 ${FULL} 上应用"
+        fi
+
         # 内核 tarball 的 sha256 从 kernel.org 官方清单取，download.pl 下载时要用它校验
         HASH=$(curl -fsSL --retry 3 --max-time 60 "https://cdn.kernel.org/pub/linux/kernel/v${MAJOR%%.*}.x/sha256sums.asc" \
                  | awk -v f="linux-${FULL}.tar.xz" '$2==f{print $1; exit}')
@@ -494,6 +544,15 @@ jobs:
             grep -q "^${sym}=y" .config || echo "${sym}=y" >> .config
           done
 
+          # ========== 包管理器切换为 APK（替代 opkg）==========
+          # lede master 已同步上游的 APK 支持：USE_APK=y 之后
+          #   - apk-mbedtls 自动进固件（package/system/apk 的 imply）
+          #   - opkg 的 DEFAULT 是 "y if !USE_APK"，defconfig 后自动不装
+          #   - LuCI 的软件包页面由 luci-app-package-manager 提供（feeds luci
+          #     已切到 openwrt-25.12 分支，天然支持 apk）
+          grep -q "^CONFIG_USE_APK=y" .config || echo "CONFIG_USE_APK=y" >> .config
+          grep -q "^CONFIG_PACKAGE_luci-app-package-manager=y" .config || echo "CONFIG_PACKAGE_luci-app-package-manager=y" >> .config
+
           make defconfig
 
           # 校验这两个符号在 defconfig 之后仍然保留（依赖不满足会被 defconfig 丢掉）
@@ -504,6 +563,13 @@ jobs:
               echo "::warning::${sym} 未启用，IPv6 可能无法获取地址"
             fi
           done
+
+          # 校验 APK 是否真正生效
+          if grep -q "^CONFIG_USE_APK=y" .config && ! grep -q "^CONFIG_PACKAGE_opkg=y" .config; then
+            echo "✅ 包管理器 = APK（opkg 已移除）"
+          else
+            echo "::warning::APK 未生效或 opkg 仍被选中，请检查 .config"
+          fi
 
           # ========== 平台自检：配置文件必须与源码仓库的目标命名一致 ==========
           # coolsnowwolf/lede 的玩客云是 target=amlogic / subtarget=meson8b
