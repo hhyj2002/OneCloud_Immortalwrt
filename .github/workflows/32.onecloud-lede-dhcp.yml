@@ -305,7 +305,16 @@ jobs:
             [ -d "$dir" ] || continue
             for f in $(ls $dir/*.patch 2>/dev/null | sort); do
               ABS="$PWD/$f"
-              if (cd "$TMPK" && patch -p1 -f --no-backup-if-mismatch --silent < "$ABS" >/dev/null 2>&1); then
+              # 试打必须用 --dry-run（纯模拟、不落盘）。之前用真实应用试打有致命漏洞：
+              # 失败补丁的「新建文件」hunk 会先落盘（如 720-05 创建 mtk-phy-lib.c），
+              # 整体虽判失败被剔除，但测试树已被污染，导致依赖该文件的下一个补丁
+              # （720-06）误判为可应用而保留，真正编译时才报 "No file to patch"。
+              if (cd "$TMPK" && patch -p1 -f --dry-run --no-backup-if-mismatch --silent < "$ABS" >/dev/null 2>&1); then
+                if (cd "$TMPK" && patch -p1 -f --no-backup-if-mismatch --silent < "$ABS" >/dev/null 2>&1); then
+                  continue
+                fi
+                echo "::warning::补丁 $(basename $f) 试打通过但实际应用失败（极少见），已剔除"
+                rm -f "$f"
                 continue
               fi
               rm -f "$f"
