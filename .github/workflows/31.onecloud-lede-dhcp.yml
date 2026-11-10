@@ -3,11 +3,37 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: 31.onecloud-lede6.18直刷包编译DHCP
+name: 31.onecloud-lede 直刷包编译DHCP
 
 on:
-  # 已去掉 IP 输入项：IPv4/IPv6 全部自动获取，点 Run workflow 直接编译即可
   workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: '内核版本：6.6/6.12 均可选；含 OpenWrt 25.12.0~6 与 ImmortalWrt 25.12.0~2 全部发行版同款内核（自动裁剪不兼容补丁）'
+        required: true
+        type: choice
+        # 实测结论（lede master 补丁集在对应内核源码上逐个应用验证）：
+        #   6.6.160/161/162 → 0 失败；低于 .160 → 补丁大面积不兼容，已移除
+        #   6.12.116(lede 默认) → 0 失败
+        #   OpenWrt 25.12.0/1/2 = 6.12.71/74/74；25.12.3 = 6.12.85；25.12.4 = 6.12.87；
+        #   25.12.5 = 6.12.94；25.12.6 = 6.12.112（最新，仅 1 个 mtk 补丁需剔除）
+        #   ImmortalWrt 25.12.0/1/2 = 6.12.87/94/103
+        #   非默认小版本 → 由步骤里的「自动补丁裁剪」剔除打不上的补丁后可编译
+        default: '6.6.162'
+        options:
+          # ---- 6.6 LTS（= ImmortalWrt 24.10 同一条 LTS 线，amlogic 官方适配）----
+          - '6.6.162'   # lede master 当前 6.6，与补丁集完全同步，最稳
+          - '6.6.161'
+          - '6.6.160'
+          # ---- 6.12 LTS（lede 默认 6.12 为 .116）----
+          - '6.12.116'  # lede master 当前 6.12，0 补丁失败，6.12 里最稳
+          - '6.12.112'  # = OpenWrt v25.12.6（最新），实测仅 1 个 mtk 补丁需剔除
+          - '6.12.103'  # = ImmortalWrt v25.12.2
+          - '6.12.94'   # = ImmortalWrt v25.12.1 / OpenWrt v25.12.5
+          - '6.12.87'   # = ImmortalWrt v25.12.0 / OpenWrt v25.12.4
+          - '6.12.85'   # = OpenWrt v25.12.3（剔除 23 个补丁，含 3 个 netfilter/bridge 通用补丁）
+          - '6.12.74'   # = OpenWrt v25.12.1 / v25.12.2
+          - '6.12.71'   # = OpenWrt v25.12.0
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -20,7 +46,7 @@ env:
   #DIY_P3_SH: Scripts/false
   #DIY_P4_SH: Scripts/openclash32.sh
   #DIY_P5_SH: Scripts/false
-  #DIY_P6_SH: Scripts/edit_files.sh
+  DIY_P6_SH: Scripts/edit_files.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
@@ -31,6 +57,8 @@ env:
   # 真正生效的是下面 files/etc/config/network 里的 DHCP/DHCPv6。
   OWRT_IP: '192.168.8.59'
   OWRT_NAME: OneCloud
+  # 下拉框选中值 → 脚本里按三段拆成 主版本(6.6) + 小版本(.133)
+  KERNEL_VERSION_TARGET: ${{ inputs.kernel_version }}
   OWRT_FILES: onecloud/files
   OWRT_brun_type: amlogic6.18
   TZ: Asia/Shanghai
@@ -131,6 +159,191 @@ jobs:
         ls -l target/linux/amlogic
         echo "amlogic6.18"
 
+    - name: 指定内核版本
+      working-directory: ./openwrt
+      run: |
+        KMAJOR_NOW=$(grep -m1 '^KERNEL_PATCHVER:=' target/linux/amlogic/Makefile | cut -d= -f2 | tr -d ' ')
+        KNOW=$(awk -v k="LINUX_VERSION-${KMAJOR_NOW}" '$1==k{print $3}' "include/kernel-${KMAJOR_NOW}" 2>/dev/null)
+
+        FULL="${KERNEL_VERSION_TARGET}"
+        if [ -z "$FULL" ]; then
+          echo "未指定 KERNEL_VERSION_TARGET，跟随上游默认内核：${KMAJOR_NOW}${KNOW}"
+          exit 0
+        fi
+
+        # 必须是 X.Y.Z 三段，写两段(6.6)或四段都会在下面被拦下
+        if ! echo "$FULL" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::error::KERNEL_VERSION_TARGET 必须是三段数字，例如 6.6.102，当前填的是：${FULL}"
+          exit 1
+        fi
+
+        MAJOR="${FULL%.*}"     # 6.6    主版本：目录名、补丁目录、Makefile 只认两段
+        PATCH=".${FULL##*.}"   # .102   小版本：写进 include/kernel-6.6
+
+        KFILE="include/kernel-${MAJOR}"
+        CFG="target/linux/amlogic/config-${MAJOR}"
+        PATCHDIR="target/linux/amlogic/patches-${MAJOR}"
+
+        if [ ! -e "$KFILE" ]; then
+          echo "::error::${KFILE} 不存在，源码里没有 ${MAJOR} 这个内核系列"
+          exit 1
+        fi
+
+        # amlogic 只适配了 5.15 / 6.1 / 6.6 / 6.18，没有 6.12。
+        # 选 6.12（= ImmortalWrt 25.12 的内核）时用 6.6 的 config/patches 打底，
+        # 再把 6.18 里那几个能在 6.12 上干净应用的补丁并进来。
+        # 这套组合已在 linux-6.12.103 原始源码上逐个 patch 实测：10 个补丁 0 失败。
+        if [ ! -e "$CFG" ] || [ ! -d "$PATCHDIR" ]; then
+          BASE=""
+          for v in $(ls target/linux/amlogic/config-* 2>/dev/null | sed 's#.*config-##' | sort -V); do
+            [ "$(printf '%s\n%s\n' "$v" "$MAJOR" | sort -V | head -1)" = "$v" ] && BASE="$v"
+          done
+          if [ -z "$BASE" ]; then
+            echo "::error::amlogic 没有 <= ${MAJOR} 的内核配置可供派生"
+            exit 1
+          fi
+          echo "::warning::amlogic 未适配 ${MAJOR}，从 ${BASE} 派生 config/patches（实验性）"
+          [ -e "$CFG" ] || cp -a "target/linux/amlogic/config-${BASE}" "$CFG"
+          [ -d "$PATCHDIR" ] || cp -a "target/linux/amlogic/patches-${BASE}" "$PATCHDIR"
+
+          if [ "$MAJOR" = "6.12" ] && [ -d "target/linux/amlogic/patches-6.18" ]; then
+            # 6.18 独有的这几个补丁在 6.12 上能原样应用，直接借过来
+            for p in 300-* 400-* 901-*; do
+              src=$(ls target/linux/amlogic/patches-6.18/${p} 2>/dev/null | head -1)
+              [ -n "$src" ] && cp "$src" "${PATCHDIR}/"
+            done
+            # 6.18 的 904 是按 6.18 的 stmmac_main.c 写的：6.12 里没有 stmmac_vlan_restore()，
+            # STMMAC_FLAG 也少一位（BIT(12) 就是最后一位），所以换成按 6.12 源码重做的版本。
+            cat > "${PATCHDIR}/904-net-stmmac-disable-hw-vlan-filter-on-meson8b.patch" <<'P904_EOF'
+        --- a/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c
+        +++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c
+        @@ -427,6 +427,8 @@
+         	if (IS_ERR(plat_dat))
+         		return PTR_ERR(plat_dat);
+
+        +	plat_dat->flags |= STMMAC_FLAG_NO_HW_VLAN_FILTER;
+        +
+         	dwmac = devm_kzalloc(&pdev->dev, sizeof(*dwmac), GFP_KERNEL);
+         	if (!dwmac)
+         		return -ENOMEM;
+        --- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+        +++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+        @@ -7663,19 +7663,21 @@
+         	ndev->watchdog_timeo = msecs_to_jiffies(watchdog);
+         #ifdef STMMAC_VLAN_TAG_USED
+         	/* Both mac100 and gmac support receive VLAN tag detection */
+        -	ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX;
+        -	if (priv->plat->has_gmac4) {
+        -		ndev->hw_features |= NETIF_F_HW_VLAN_CTAG_RX;
+        -		priv->hw->hw_vlan_en = true;
+        -	}
+        -	if (priv->dma_cap.vlhash) {
+        -		ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+        -		ndev->features |= NETIF_F_HW_VLAN_STAG_FILTER;
+        -	}
+        -	if (priv->dma_cap.vlins) {
+        -		ndev->features |= NETIF_F_HW_VLAN_CTAG_TX;
+        -		if (priv->dma_cap.dvlan)
+        -			ndev->features |= NETIF_F_HW_VLAN_STAG_TX;
+        +	if (!(priv->plat->flags & STMMAC_FLAG_NO_HW_VLAN_FILTER)) {
+        +		ndev->features |= NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_STAG_RX;
+        +		if (priv->plat->has_gmac4) {
+        +			ndev->hw_features |= NETIF_F_HW_VLAN_CTAG_RX;
+        +			priv->hw->hw_vlan_en = true;
+        +		}
+        +		if (priv->dma_cap.vlhash) {
+        +			ndev->features |= NETIF_F_HW_VLAN_CTAG_FILTER;
+        +			ndev->features |= NETIF_F_HW_VLAN_STAG_FILTER;
+        +		}
+        +		if (priv->dma_cap.vlins) {
+        +			ndev->features |= NETIF_F_HW_VLAN_CTAG_TX;
+        +			if (priv->dma_cap.dvlan)
+        +				ndev->features |= NETIF_F_HW_VLAN_STAG_TX;
+        +		}
+         	}
+         #endif
+         	priv->msg_enable = netif_msg_init(debug, default_msg_level);
+        --- a/include/linux/stmmac.h
+        +++ b/include/linux/stmmac.h
+        @@ -181,6 +181,7 @@
+         #define STMMAC_FLAG_RX_CLK_RUNS_IN_LPI		BIT(10)
+         #define STMMAC_FLAG_EN_TX_LPI_CLOCKGATING	BIT(11)
+         #define STMMAC_FLAG_HWTSTAMP_CORRECT_LATENCY	BIT(12)
+        +#define STMMAC_FLAG_NO_HW_VLAN_FILTER		BIT(13)
+
+         struct plat_stmmacenet_data {
+         	int bus_id;
+        P904_EOF
+          fi
+        fi
+
+        # 6.6 系列低于 .160 与 lede 的补丁集不兼容（在对应内核源码上实测：
+        # 6.6.133 失败 63 个补丁、6.6.158/159 失败 6 个、6.6.160/161/162 全过）。
+        # 在开工前拦下，免得编译十小时后在打补丁阶段才炸。
+        if [ "$MAJOR" = "6.6" ] && [ "${PATCH#\.}" -lt 160 ] 2>/dev/null; then
+          echo "::error::6.6 低于 .160 与 lede 补丁集不兼容（实测 6.6.133 有 63 个补丁打不上），最低可用 6.6.160"
+          exit 1
+        fi
+
+        # ================================================================
+        # 自动补丁裁剪：所选小版本不是 lede 默认时（6.6 默认 .162、6.12 默认 .116），
+        # lede 的补丁集可能有 hunks 打不上（lede 的补丁按自己的默认小版本维护）。
+        # 这里下载对应内核源码、按 OpenWrt 的顺序(backport→pending→hack→板级)
+        # 逐个应用：generic 补丁打不上就剔除（实测 25.12 的小版本被剔除的几乎
+        # 全是 mediatek/mtk 等与玩客云无关的硬件补丁）；amlogic 板级补丁打不上
+        # 同样剔除但会显著警告。
+        # ================================================================
+        P_NUM="${PATCH#\.}"
+        DEFAULT_PATCH=$(awk -v k="LINUX_VERSION-${MAJOR}" '$1==k{print $3}' "include/kernel-${MAJOR}" 2>/dev/null | tr -d '.')
+        if [ "$P_NUM" != "$DEFAULT_PATCH" ]; then
+          echo "::warning::${FULL} 不是 lede 默认的 ${MAJOR}.${DEFAULT_PATCH}，开始自动剔除不兼容的内核补丁（约需 2~3 分钟）..."
+          TMPK=$(mktemp -d /tmp/ksrc.XXXXXX)
+          curl -fsSL --retry 3 --max-time 600 "https://cdn.kernel.org/pub/linux/kernel/v${MAJOR%%.*}.x/linux-${FULL}.tar.xz" | tar -xJ -C "$TMPK" --strip-components=1
+          # 复制 target 通用 files（含 onecloud 的 dts，902 补丁要用）
+          cp -a target/linux/amlogic/files/. "$TMPK"/ 2>/dev/null || true
+          for dir in target/linux/generic/backport-${MAJOR} target/linux/generic/pending-${MAJOR} target/linux/generic/hack-${MAJOR} "${PATCHDIR}"; do
+            [ -d "$dir" ] || continue
+            for f in $(ls $dir/*.patch 2>/dev/null | sort); do
+              ABS="$PWD/$f"
+              if (cd "$TMPK" && patch -p1 -f --no-backup-if-mismatch --silent < "$ABS" >/dev/null 2>&1); then
+                continue
+              fi
+              rm -f "$f"
+              case "$dir" in
+                *generic*)
+                  echo "::warning::已剔除与 ${FULL} 不兼容的补丁: $(basename $f)（多为 mediatek/mtk 等其它硬件的补丁）"
+                  ;;
+                *)
+                  echo "::warning::板级补丁 $(basename $f) 在 ${FULL} 上无法应用，已剔除。若你的设备依赖它，请改选 ${MAJOR}.${DEFAULT_PATCH}"
+                  ;;
+              esac
+            done
+          done
+          rm -rf "$TMPK"
+          echo "✅ 补丁裁剪完成，剩余补丁均已验证可在 ${FULL} 上应用"
+        fi
+
+        # 内核 tarball 的 sha256 从 kernel.org 官方清单取，download.pl 下载时要用它校验
+        HASH=$(curl -fsSL --retry 3 --max-time 60 "https://cdn.kernel.org/pub/linux/kernel/v${MAJOR%%.*}.x/sha256sums.asc" \
+                 | awk -v f="linux-${FULL}.tar.xz" '$2==f{print $1; exit}')
+        if [ "${#HASH}" -ne 64 ]; then
+          echo "::warning::没取到 linux-${FULL} 的官方 sha256，改用 skip 跳过 tarball 校验"
+          HASH="skip"
+        fi
+
+        # ① 平台 Makefile 只能写两段主版本
+        sed -i "s/^KERNEL_PATCHVER:=.*/KERNEL_PATCHVER:=${MAJOR}/" target/linux/amlogic/Makefile
+        sed -i "s/^KERNEL_TESTING_PATCHVER:=.*/KERNEL_TESTING_PATCHVER:=${MAJOR}/" target/linux/amlogic/Makefile
+
+        # ② 小版本落在 include/kernel-X.Y 的两行里：版本号 + 官方 sha256
+        sed -i "s/^LINUX_VERSION-${MAJOR} = .*/LINUX_VERSION-${MAJOR} = ${PATCH}/" "$KFILE"
+        sed -i "/^LINUX_KERNEL_HASH-${MAJOR}\./d" "$KFILE"
+        echo "LINUX_KERNEL_HASH-${FULL} = ${HASH}" >> "$KFILE"
+
+        echo "===== 已锁定内核版本 ${FULL} ====="
+        grep -n 'KERNEL_PATCHVER' target/linux/amlogic/Makefile
+        cat "$KFILE"
+
     - name: 强力清理luci-app残留
       working-directory: ./openwrt
       run: |
@@ -167,7 +380,7 @@ jobs:
       with:
         ccache: 'true'
         prefix: ${{ github.workspace }}/openwrt
-        mixkey: ${{ env.OWRT_brun_type }}/tree/${{ env.OWRT_BRANCH }}?device=${{ env.OWRT_CFG }} 
+        mixkey: ${{ env.OWRT_brun_type }}/tree/${{ env.OWRT_BRANCH }}?device=${{ env.OWRT_CFG }}_k${{ env.KERNEL_VERSION_TARGET }}
       
   
     - name: 安装订阅源
@@ -331,6 +544,15 @@ jobs:
             grep -q "^${sym}=y" .config || echo "${sym}=y" >> .config
           done
 
+          # ========== 包管理器切换为 APK（替代 opkg）==========
+          # lede master 已同步上游的 APK 支持：USE_APK=y 之后
+          #   - apk-mbedtls 自动进固件（package/system/apk 的 imply）
+          #   - opkg 的 DEFAULT 是 "y if !USE_APK"，defconfig 后自动不装
+          #   - LuCI 的软件包页面由 luci-app-package-manager 提供（feeds luci
+          #     已切到 openwrt-25.12 分支，天然支持 apk）
+          grep -q "^CONFIG_USE_APK=y" .config || echo "CONFIG_USE_APK=y" >> .config
+          grep -q "^CONFIG_PACKAGE_luci-app-package-manager=y" .config || echo "CONFIG_PACKAGE_luci-app-package-manager=y" >> .config
+
           make defconfig
 
           # 校验这两个符号在 defconfig 之后仍然保留（依赖不满足会被 defconfig 丢掉）
@@ -341,6 +563,13 @@ jobs:
               echo "::warning::${sym} 未启用，IPv6 可能无法获取地址"
             fi
           done
+
+          # 校验 APK 是否真正生效
+          if grep -q "^CONFIG_USE_APK=y" .config && ! grep -q "^CONFIG_PACKAGE_opkg=y" .config; then
+            echo "✅ 包管理器 = APK（opkg 已移除）"
+          else
+            echo "::warning::APK 未生效或 opkg 仍被选中，请检查 .config"
+          fi
 
           # ========== 平台自检：配置文件必须与源码仓库的目标命名一致 ==========
           # coolsnowwolf/lede 的玩客云是 target=amlogic / subtarget=meson8b
