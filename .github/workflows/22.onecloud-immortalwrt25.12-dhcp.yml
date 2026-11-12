@@ -63,6 +63,10 @@ jobs:
           sudo -E apt -yqq clean
           sudo -E apt -yqq install dos2unix libfuse-dev libxml2 python3-setools python3-setuptools libffi-dev pkg-config lib32z1-dev libpcre3 libpcre3-dev
           sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+          # runner 自带 git 已够新，剔除 git-core PPA，避免公钥拉取失败导致后续 apt 全部 exit 100
+          sudo rm -f /etc/apt/sources.list.d/git-core-ubuntu-ppa.list
+          sudo rm -f /etc/apt/trusted.gpg.d/git-core-ubuntu-ppa.asc
+          sudo -E apt -yqq update
           sudo -E systemctl daemon-reload
           sudo timedatectl set-timezone "$TZ"
           sudo mkdir -p /workdir
