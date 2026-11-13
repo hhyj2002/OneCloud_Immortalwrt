@@ -49,6 +49,11 @@ sed -i 's/root:::0:99999:7:::/root:$1$V4UetPzk$CYXluq4wUazHjmCDBCqXF.:0:0:99999:
 #连接数
 sed -i '/customized in this file/a fs.file-max=102400\nnet.ipv4.neigh.default.gc_thresh1=512\nnet.ipv4.neigh.default.gc_thresh2=2048\nnet.ipv4.neigh.default.gc_thresh3=4096\nnet.netfilter.nf_conntrack_max=65535' package/base-files/files/etc/sysctl.conf
 
+# 移除 LEDE 官方默认强制的 luci-app-ssr-plus（router 类设备 DEFAULT_PACKAGES）
+# ssr-plus 会连带 select xray-core，而 xray-core 26.x 的 cronet-go 存在
+# cgo "-l:libcronet.a" 语法问题导致编译失败，且本仓库不需要代理插件
+sed -i 's/ luci-app-ssr-plus//g' include/target.mk
+
 # 修改 argon 为默认主题
 #sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
 
