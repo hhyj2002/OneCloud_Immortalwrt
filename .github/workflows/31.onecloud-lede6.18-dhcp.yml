@@ -116,6 +116,12 @@ jobs:
       run: |
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
+        # 固定到已知可编译的提交（本 workflow 2026-11-12 编译成功时的 master 快照 80122fea）。
+        # 背景：2026-11-13 凌晨上游 lede 推送的 "build: restore native macOS cross-compilation"
+        # (bed88351) 重写了 tools/elfutils / tools/gnulib / tools/coreutils 等宿主工具，
+        # 在 Actions 的 -j 并行编译下 elfutils 会构建失败（单线程 V=s 才能过）。
+        # 后续上游修复后，把下面这行注释掉或换成新提交即可恢复跟踪 master。
+        git -C openwrt checkout 80122feac964889bc69b62420cedfefaaf701eb0
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
         
     - name: 检查脚本
@@ -370,7 +376,22 @@ jobs:
           fi
           echo "✅ 目标平台校验通过"
 
-          make download -j$(( $(nproc) * 2 ))
+          make download -j$(( $(nproc) * 2 )) || true
+
+          # ===== erofs-utils 源码包下载兜底 =====
+          # tools/erofs-utils 的唯一源是 git.kernel.org 的 snapshot 包，
+          # openwrt 各镜像(404)都没有缓存 erofs-utils-1.8.10.tar.gz；
+          # git.kernel.org 对 GitHub Actions runner 抽风超时时整个编译必挂。
+          # erofs/erofs-utils GitHub 镜像 v1.8.10 tag 包与 kernel.org snapshot
+          # 字节级一致（sha256 同为 05eb4ede...14），此处直接兜底补齐。
+          if [ ! -f dl/erofs-utils-1.8.10.tar.gz ]; then
+            echo "⚠️ git.kernel.org 下载 erofs-utils 失败，改用 GitHub 镜像补齐"
+            curl -fL --retry 3 --connect-timeout 20 \
+              -o dl/erofs-utils-1.8.10.tar.gz \
+              "https://codeload.github.com/erofs/erofs-utils/tar.gz/refs/tags/v1.8.10"
+          fi
+
+          make download -j1
           find dl -size -1k -exec rm -f {} \;
 
     - name: 编译固件
