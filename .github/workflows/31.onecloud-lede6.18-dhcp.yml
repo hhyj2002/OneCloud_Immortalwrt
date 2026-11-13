@@ -320,6 +320,22 @@ jobs:
           #  ${GITHUB_WORKSPACE}/${DIY_P5_SH}
           #fi 
         
+    # LEDE 的 include/target.mk 把 luci-app-ssr-plus 硬编码进 DEFAULT_PACKAGES.router，
+    # 会被转成 select PACKAGE_luci-app-ssr-plus（select 优先级高于 .config 里的 is not set，
+    # 写 # CONFIG_PACKAGE_luci-app-ssr-plus is not set 无效），只能从源码默认包里剔除。
+    # 不剔除的后果：ssr-plus 默认选中 Xray 内核 → 连带编译 xray-core 26.x，
+    # 而 xray-core 的 cronet-go 存在 #cgo LDFLAGS "-l:libcronet.a" 被 Go 拦截的问题，编译必失败。
+    - name: 移除默认包中的 ssr-plus（防连带编译 xray-core）
+      working-directory: ./openwrt
+      run: |
+          if grep -q "luci-app-ssr-plus" include/target.mk; then
+            sed -i 's/ luci-app-ssr-plus//g' include/target.mk
+            echo "✅ 已从 include/target.mk 的默认包中移除 luci-app-ssr-plus"
+          else
+            echo "ℹ️ include/target.mk 中未发现 luci-app-ssr-plus，跳过"
+          fi
+          grep -n "DEFAULT_PACKAGES.router" include/target.mk
+
     - name: 下载编译环境
       working-directory: ./openwrt
       run: |      
