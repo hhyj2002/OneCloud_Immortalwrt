@@ -352,6 +352,23 @@ jobs:
           make download -j$(( $(nproc) * 2 ))
           find dl -size -1k -exec rm -f {} \;
 
+      - name: 预生成内核配置(防kconfig交互卡死)
+        working-directory: ./openwrt
+        run: |
+          # ALL_KMODS 会启用 RC/Media/DVB 等大量内核子系统，而板级 config-6.12
+          # 缺少部分新内核符号（如 BPF_LIRC_MODE2），kbuild syncconfig 会弹出
+          # 交互式提问，在 CI 非交互环境中直接报错退出。
+          # 这里先 prepare 出内核构建目录，再用 olddefconfig 为所有新符号
+          # 填入默认值，使后续内核编译完全非交互。
+          make target/linux/prepare -j$(( $(nproc) + 1 ))
+          KDIR=$(ls -d build_dir/target-*/linux-*/linux-* 2>/dev/null | head -n 1)
+          if [ -n "$KDIR" ] && [ -f "$KDIR/Makefile" ]; then
+            make -C "$KDIR" olddefconfig
+            echo "[OK] 内核配置已非交互补全: $KDIR"
+          else
+            echo "::warning::未找到内核构建目录，跳过 olddefconfig"
+          fi
+
       - name: 编译固件
         working-directory: ./openwrt
         run: |
