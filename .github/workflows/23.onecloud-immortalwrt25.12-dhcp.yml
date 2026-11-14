@@ -430,9 +430,102 @@ jobs:
           echo "=== apk 架构分布 ==="
           ls "$STAGE" | sed 's/.*_\([^_]*\)\.apk/\1/' | sort | uniq -c
 
-          # 4. 压缩打包（apk 本身已压缩，使用存储模式加快速度）
+          # 4. 补签全部 apk 并生成合并索引 packages.adb
+          #    注意：apk v3 的索引是一个 adb 容器，签名内嵌其中，不会产生
+          #    packages.adb.sig 这类独立签名文件；客户端把 public-key.pem
+          #    放进 /etc/apk/keys/ 即可完成校验（官方源的 .asc 是 GPG 发布
+          #    签名，仅用于校验下载镜像，apk 本身不读取）
+          TOPDIR=$(pwd)
+          APK_BIN=""
+          for c in staging_dir/host/bin/apk "$(command -v apk 2>/dev/null || true)"; do
+            if [ -n "$c" ] && [ -x "$c" ]; then APK_BIN=$(readlink -f "$c"); break; fi
+          done
+          echo "apk 工具: ${APK_BIN:-未找到}"
+
+          if [ -n "$APK_BIN" ]; then
+            # 4.1 构建密钥，与 rules.mk 的 BUILD_KEY_APK_SEC/PUB 同名同位置
+            OPENSSL=$(command -v openssl 2>/dev/null || echo staging_dir/host/bin/openssl)
+            if [ ! -s private-key.pem ]; then
+              "$OPENSSL" ecparam -name prime256v1 -genkey -noout -out private-key.pem
+            fi
+            if [ ! -s public-key.pem ]; then
+              "$OPENSSL" ec -in private-key.pem -pubout -out public-key.pem 2>/dev/null
+            fi
+
+            # 4.2 逐个补签 apk：编译未启用 CONFIG_SIGNED_PACKAGES 时包本身无签名，
+            #     只签索引的话设备端安装仍会报 UNTRUSTED signature。
+            #     注意：apk adbsign 一次传入多个文件时只会签第一个，必须逐文件调用
+            echo "=== 给 ${APK_COUNT} 个 apk 补签 ==="
+            export APK_BIN TOPDIR
+            if (cd "$STAGE" && find . -maxdepth 1 -name '*.apk' -print0 \
+                  | xargs -0 -n 1 -P "$(nproc)" sh -c '"$APK_BIN" adbsign --keys-dir "$TOPDIR" --allow-untrusted --sign "$TOPDIR/private-key.pem" "$1" >/dev/null 2>&1' _); then
+              # 抽样校验（最多 5 个），确认签名确实写入了包内
+              SAMPLE_N=$(cd "$STAGE" && ls -1 *.apk | wc -l)
+              if [ "$SAMPLE_N" -gt 5 ]; then SAMPLE_N=5; fi
+              SAMPLE_OK=0
+              for f in $(cd "$STAGE" && ls -1 *.apk | shuf -n "$SAMPLE_N"); do
+                if "$APK_BIN" verify --keys-dir "$TOPDIR" "$STAGE/$f" >/dev/null 2>&1; then
+                  SAMPLE_OK=$((SAMPLE_OK + 1))
+                fi
+              done
+              echo "[OK] 补签完成，抽样校验通过 ${SAMPLE_OK}/${SAMPLE_N}"
+              if [ "$SAMPLE_OK" -lt "$SAMPLE_N" ]; then
+                echo "::warning::部分 apk 补签未生效，设备端安装时可能需加 --allow-untrusted"
+              fi
+            else
+              echo "::warning::apk 补签失败，设备端安装时需加 --allow-untrusted"
+            fi
+
+            # 4.3 生成合并索引（kmods 与 packages 全部包进同一份索引）
+            echo "=== 生成 packages.adb 索引 ==="
+            if (cd "$STAGE" && "$APK_BIN" mkndx --root "$TOPDIR" --keys-dir "$TOPDIR" \
+                  --allow-untrusted --sign "$TOPDIR/private-key.pem" \
+                  --output packages.adb ./*.apk); then
+              if "$APK_BIN" adbdump "$STAGE/packages.adb" >/dev/null 2>&1; then
+                echo "[OK] 索引校验通过"
+              else
+                echo "::warning::索引回读校验未通过"
+              fi
+            else
+              echo "::warning::索引生成失败，压缩包内只保留 apk 文件"
+              rm -f "$STAGE/packages.adb"
+            fi
+            cp -f public-key.pem "$STAGE/" 2>/dev/null || true
+          else
+            echo "::warning::未找到 apk 命令，跳过索引生成"
+          fi
+
+          # 5. 保留构建系统按官方仓库布局生成的各目录索引
+          #    packages/<arch>/<feed>/、targets/<b>/<s>/packages/、
+          #    targets/<b>/<s>/kmods/<内核版本>-<rel>-<vermagic>/
+          mkdir -p "$STAGE/official-index"
+          while IFS= read -r f; do
+            rel=${f#bin/}
+            mkdir -p "$STAGE/official-index/$(dirname "$rel")"
+            cp -f "$f" "$STAGE/official-index/$rel"
+          done < <(find bin -type f -name "packages.adb" 2>/dev/null)
+          echo "官方布局索引数量: $(find "$STAGE/official-index" -name packages.adb | wc -l)"
+
+          # 6. 随包附带一份离线源使用说明
+          cat > "$STAGE/README-APK-REPO.txt" <<'EOF'
+          APK 离线源使用说明
+          ==================
+          1) 解压到路由器可访问的位置，例如 /mnt/usb/apk-repo
+          2) 追加软件源（.adb 结尾会自动按 v3 索引解析）
+             echo "ndx file:///mnt/usb/apk-repo/packages.adb" >> /etc/apk/repositories
+          3) 信任签名公钥
+             cp public-key.pem /etc/apk/keys/ && apk update
+          4) 安装示例
+             apk add luci-app-argon
+
+          说明：packages.adb 是全部包的合并索引（签名内嵌，无独立 .sig 文件）；
+                official-index/ 是构建系统按官方仓库布局生成的各分目录索引；
+                kmod 必须与本机内核版本一致（apk info kernel 查看）。
+          EOF
+
+          # 7. 压缩打包（apk 本身已压缩，使用存储模式加快速度）
           rm -f "/workdir/${ZIP_NAME}"
-          (cd "$STAGE" && zip -q -0 "/workdir/${ZIP_NAME}" ./*.apk)
+          (cd "$STAGE" && zip -q -0 -r "/workdir/${ZIP_NAME}" ./*)
           du -sh "/workdir/${ZIP_NAME}"
           # GitHub Release 单文件上限 2GiB，超限则提前报错
           ZIP_BYTES=$(stat -c%s "/workdir/${ZIP_NAME}")
@@ -557,6 +650,7 @@ jobs:
             🔑 默认密码： password
             🌐 默认地址： DHCP（请在路由器管理页面查看设备IP）
             📦 全量APK： 全部 kmod + package 安装包压缩包（仿官方kmods目录命名）
+            🔐 APK离线源： 压缩包内 packages.adb（已签名）+ public-key.pem，解压即用（详见 README-APK-REPO.txt）
           artifacts: ${{ env.FIRMWARE }}/*
 
       - name: 清理Releases
