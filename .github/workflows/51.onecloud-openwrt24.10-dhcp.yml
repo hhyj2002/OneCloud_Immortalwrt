@@ -319,9 +319,13 @@ jobs:
         working-directory: ./openwrt
         run: |
           # ==========================================================
-          # 收集本次编译产生的全部安装包（kmods + packages，24.10 为 ipk），
-          # 仿官方 releases/<ver>/targets/<t>/<s>/kmods/<内核版本-1-哈希>/
-          # 目录命名方式，全部压缩为一个 zip 随 Release 一并上传
+          # 24.10 为 opkg/ipk 体系：官方软件源的配置里只写"目录名"，
+          # 索引文件是该目录下的 Packages / Packages.gz / Packages.sig，
+          # 不存在 packages.adb（apk v3 才有，24.10 默认不产 apk）。
+          # 因此这里按官方 releases 布局原样归档，每个目录自带索引：
+          #   repo/packages/<arch>/<feed>/...
+          #   repo/targets/<board>/<sub>/packages/...
+          #   repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>/...
           # ==========================================================
           # 1. 优先使用编译系统生成的 kmods 目录名（与官方格式完全一致）
           KMOD_DIR=$(find bin -type d -path "*kmods/*" | head -n 1)
@@ -338,130 +342,130 @@ jobs:
           ZIP_NAME="${KMOD_NAME}.zip"
           echo "安装包压缩包名: $ZIP_NAME"
 
-          # 3. 汇集全部安装包（按文件名去重，kmods 与 packages 合并）
+          # 3. 按官方相对路径归位（只保留一份，不做扁平复制，避免体积翻倍）
           STAGE=/workdir/pkg_stage
+          REPO="$STAGE/repo"
           rm -rf "$STAGE"
-          mkdir -p "$STAGE"
-          find bin -type f \( -name "*.ipk" -o -name "*.apk" \) -exec cp -n {} "$STAGE"/ \; 2>/dev/null || true
-          PKG_COUNT=$(ls -1 "$STAGE" | wc -l)
+          mkdir -p "$REPO"
+          find bin -type f \( -name "*.ipk" -o -name "*.apk" \) -print 2>/dev/null | while IFS= read -r f; do
+            rel=${f#bin/}
+            mkdir -p "$REPO/$(dirname "$rel")"
+            cp -n "$f" "$REPO/$rel" 2>/dev/null || true
+          done
+          PKG_COUNT=$(find "$REPO" -type f \( -name "*.ipk" -o -name "*.apk" \) | wc -l)
           [ "$PKG_COUNT" -gt 0 ] || { echo "::error::没有找到任何 ipk/apk 安装包"; exit 1; }
           echo "共收集 $PKG_COUNT 个安装包"
-          echo "=== 架构分布 ==="
-          ls -1 "$STAGE" | sed -E 's/.*_([^_]+)\.(ipk|apk)$/\1/' | sort | uniq -c
+          echo "=== 软件源目录（官方布局） ==="
+          find "$REPO" -type f \( -name "*.ipk" -o -name "*.apk" \) -printf '%h\n' | sed "s|^$REPO/||" | sort | uniq -c
 
-          # 4. 生成仓库索引
-          #    - 有 .apk（CONFIG_USE_APK）时：补签全部 apk 并生成 packages.adb，
-          #      apk v3 索引签名内嵌在 adb 容器里，不会产生 .sig 文件
-          #    - 24.10 默认 opkg/ipk：生成 Packages + Packages.gz，并用 usign 签名
-          TOPDIR=$(pwd)
-          HAS_APK=$(ls "$STAGE"/*.apk 2>/dev/null | wc -l)
-          HAS_IPK=$(ls "$STAGE"/*.ipk 2>/dev/null | wc -l)
-          echo "apk 包: $HAS_APK 个, ipk 包: $HAS_IPK 个"
-          if [ "$HAS_APK" -gt 0 ] && [ "$HAS_IPK" -gt 0 ]; then
-            echo "::warning::同时存在 apk 与 ipk，优先按 apk 生成 packages.adb（ipk 不建索引）"
+          # 4. 逐个目录生成 opkg 索引（索引必须与包同目录，Filename 用纯文件名）
+          USIGN="$PWD/staging_dir/host/bin/usign"
+          [ -x "$USIGN" ] || USIGN=$(command -v usign 2>/dev/null || true)
+          SIGN_KEY="$PWD/key-build"
+          CAN_SIGN=0
+          if [ -n "$USIGN" ] && [ -x "$USIGN" ] && [ -s "$SIGN_KEY" ]; then
+            CAN_SIGN=1
+          else
+            echo "::warning::未找到 usign 或 key-build，索引将不签名（设备端需关闭 check_signature）"
           fi
 
-          if [ "$HAS_APK" -gt 0 ]; then
-            APK_BIN=""
-            for c in staging_dir/host/bin/apk "$(command -v apk 2>/dev/null || true)"; do
-              if [ -n "$c" ] && [ -x "$c" ]; then APK_BIN=$(readlink -f "$c"); break; fi
-            done
-            if [ -n "$APK_BIN" ]; then
-              OPENSSL=$(command -v openssl 2>/dev/null || echo staging_dir/host/bin/openssl)
-              if [ ! -s private-key.pem ]; then
-                "$OPENSSL" ecparam -name prime256v1 -genkey -noout -out private-key.pem
-              fi
-              if [ ! -s public-key.pem ]; then
-                "$OPENSSL" ec -in private-key.pem -pubout -out public-key.pem 2>/dev/null
-              fi
-              # 注意：apk adbsign 一次传多个文件只会签第一个，必须逐文件调用
-              echo "=== 给 ${HAS_APK} 个 apk 补签 ==="
-              export APK_BIN TOPDIR
-              if (cd "$STAGE" && find . -maxdepth 1 -name '*.apk' -print0 \
-                    | xargs -0 -n 1 -P "$(nproc)" sh -c '"$APK_BIN" adbsign --keys-dir "$TOPDIR" --allow-untrusted --sign "$TOPDIR/private-key.pem" "$1" >/dev/null 2>&1' _); then
-                echo "[OK] apk 补签完成"
-              else
-                echo "::warning::apk 补签失败，设备端安装时需加 --allow-untrusted"
-              fi
-              echo "=== 生成 packages.adb 索引 ==="
-              if (cd "$STAGE" && "$APK_BIN" mkndx --root "$TOPDIR" --keys-dir "$TOPDIR" \
-                    --allow-untrusted --sign "$TOPDIR/private-key.pem" \
-                    --output packages.adb ./*.apk); then
-                echo "[OK] packages.adb 已生成（签名内嵌）"
-              else
-                echo "::warning::packages.adb 生成失败"
-                rm -f "$STAGE/packages.adb"
-              fi
-              cp -f public-key.pem "$STAGE/" 2>/dev/null || true
-            else
-              echo "::warning::未找到 apk 命令，跳过 packages.adb"
-            fi
-          elif [ "$HAS_IPK" -gt 0 ]; then
-            # 24.10 默认 opkg/ipk：直接解析每个 ipk 的 control 生成 Packages，
-            # 不依赖 scripts/ipkg-make-index.sh（该脚本的 sed 转义在部分 sed 版本下会报错）
-            echo "=== 生成 opkg 索引 Packages ==="
-            : > "$STAGE/Packages"
-            for f in "$STAGE"/*.ipk; do
+          gen_opkg_index() {
+            d="$1"
+            ls "$d"/*.ipk >/dev/null 2>&1 || return 0
+            : > "$d/Packages"
+            for f in "$d"/*.ipk; do
+              [ -e "$f" ] || continue
               b=$(basename "$f")
-              case "$b" in
-                kernel_*|libc_*) continue ;;
-              esac
-              if ! ctl=$(tar -xzOf "$f" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null); then
+              ctl=$(tar -xzOf "$f" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null) || ctl=""
+              if [ -z "$ctl" ]; then
                 echo "::warning::无法解析 control，跳过: $b"
                 continue
               fi
               printf '%s\n' "$ctl" | awk -v fn="$b" -v sz="$(stat -c%s "$f")" -v sh="$(sha256sum "$f" | cut -d' ' -f1)" '
                 /^Description:/ && !done { print "Filename: " fn; print "Size: " sz; print "SHA256sum: " sh; done=1 }
-                { print }' >> "$STAGE/Packages"
-              echo "" >> "$STAGE/Packages"
+                { print }' >> "$d/Packages"
+              echo "" >> "$d/Packages"
             done
-            if [ -s "$STAGE/Packages" ]; then
-              gzip -9nc "$STAGE/Packages" > "$STAGE/Packages.gz"
-              USIGN="$TOPDIR/staging_dir/host/bin/usign"
-              if [ -x "$USIGN" ] && [ -s "$TOPDIR/key-build" ]; then
-                if "$USIGN" -S -m "$STAGE/Packages" -s "$TOPDIR/key-build" >/dev/null 2>&1; then
-                  echo "[OK] Packages 已签名（Packages.sig）"
-                else
-                  echo "::warning::Packages 签名失败"
-                fi
-                cp -f "$TOPDIR/key-build.pub" "$STAGE/" 2>/dev/null || true
-              else
-                echo "::warning::未找到 usign 或 key-build，Packages 未签名"
+            if [ -s "$d/Packages" ]; then
+              gzip -9nc "$d/Packages" > "$d/Packages.gz"
+              if [ "$CAN_SIGN" = "1" ]; then
+                "$USIGN" -S -m "$d/Packages" -s "$SIGN_KEY" >/dev/null 2>&1 \
+                  || echo "::warning::索引签名失败: ${d#$REPO/}"
               fi
-              IDX_N=$(grep -c '^Package:' "$STAGE/Packages" || true)
-              echo "[OK] 索引收录 ${IDX_N} 个包"
-            else
-              echo "::warning::opkg 索引生成失败"
             fi
+          }
+
+          IDX_DIRS=0
+          while IFS= read -r d; do
+            gen_opkg_index "$d"
+            IDX_DIRS=$((IDX_DIRS + 1))
+          done < <(find "$REPO" -type d | sort)
+          IDX_PKGS=$(find "$REPO" -name Packages -type f -exec cat {} + 2>/dev/null | grep -c '^Package:' || true)
+          echo "[OK] 已为 ${IDX_DIRS} 个目录生成索引，索引共收录 ${IDX_PKGS} 个包"
+          if [ "$(find "$REPO" -name '*.apk' | wc -l)" -gt 0 ]; then
+            echo "::warning::检测到 .apk：24.10 默认走 opkg，本步骤只生成 opkg 索引（apk 索引见 23/43 工作流）"
           fi
 
-          # 5. 保留构建系统按官方布局生成的各目录索引
-          #    packages/<arch>/<feed>/、targets/<b>/<s>/packages/、
-          #    targets/<b>/<s>/kmods/<内核版本>-<rel>-<vermagic>/
-          mkdir -p "$STAGE/official-index"
-          while IFS= read -r f; do
-            rel=${f#bin/}
-            mkdir -p "$STAGE/official-index/$(dirname "$rel")"
-            cp -f "$f" "$STAGE/official-index/$rel"
-          done < <(find bin -type f \( -name "packages.adb" -o -name "Packages" -o -name "Packages.gz" -o -name "Packages.sig" \) 2>/dev/null)
-          echo "官方布局索引文件数: $(find "$STAGE/official-index" -type f | wc -l)"
+          # 5. 公钥 + 一键启用脚本（opkg 要求公钥文件名是 usign 指纹）
+          if [ "$CAN_SIGN" = "1" ] && [ -s "$PWD/key-build.pub" ]; then
+            cp -f "$PWD/key-build.pub" "$STAGE/key-build.pub"
+          fi
 
-          # 6. 随包附带一份离线源使用说明
+          cat > "$STAGE/enable-local-repo.sh" <<'EOS'
+          #!/bin/sh
+          # 在路由器上执行： sh ./enable-local-repo.sh
+          # 自动把本目录下的各级软件源（目录形式，与官方 distfeeds 写法一致）加入 opkg
+          set -e
+          BASE=$(cd "$(dirname "$0")" && pwd)
+          CONF=/etc/opkg/customfeeds.conf
+          touch "$CONF"
+          if [ -f "$BASE/key-build.pub" ]; then
+            mkdir -p /etc/opkg/keys
+            FP=$(usign -F -p "$BASE/key-build.pub" 2>/dev/null || true)
+            if [ -n "$FP" ]; then
+              cp -f "$BASE/key-build.pub" "/etc/opkg/keys/$FP"
+              echo "已导入公钥: /etc/opkg/keys/$FP"
+            fi
+          fi
+          N=0
+          for P in $(cd "$BASE" && find repo -name Packages -type f 2>/dev/null); do
+            D=$(dirname "$P")
+            grep -q "file://$BASE/$D" "$CONF" 2>/dev/null && continue
+            N=$((N + 1))
+            echo "src/gz local_${N}_$(basename "$D") file://$BASE/$D" >> "$CONF"
+          done
+          echo "已添加 $N 条本地源到 $CONF"
+          echo "下一步：opkg update"
+          echo "若报签名错误，请注释 /etc/opkg.conf 中的 option check_signature，或使用已签名的索引"
+          EOS
+          chmod +x "$STAGE/enable-local-repo.sh"
+
           cat > "$STAGE/README-PKG-REPO.txt" <<'EOF'
-          离线软件源使用说明
-          ==================
-          apk 版（包内有 packages.adb）：
-            echo "ndx file:///mnt/usb/repo/packages.adb" >> /etc/apk/repositories
-            cp public-key.pem /etc/apk/keys/ && apk update
+          24.10 离线软件源使用说明（opkg / ipk）
+          ======================================
+          本包内是官方 releases 目录布局，每个目录自带 Packages / Packages.gz(/sig)：
+            repo/packages/<arch>/<feed>/                        软件包（base/luci/packages/routing...）
+            repo/targets/<board>/<sub>/packages/                板级包（base-files 等）
+            repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>/   内核模块
 
-          opkg 版（包内有 Packages.gz，24.10 默认）：
-            echo "src/gz local file:///mnt/usb/repo" >> /etc/opkg/customfeeds.conf
-            opkg update
+          【推荐】一键启用（自动生成所有 src/gz 目录型源）：
+            解压到路由器（如 /mnt/usb/repo），执行：
+              sh /mnt/usb/repo/enable-local-repo.sh
+              opkg update
 
-          kmod 必须与本机内核版本一致（apk info kernel / opkg info kernel 查看）。
+          【手动】等价写法（与官方 feeds.mk 一致，只写目录名，不写文件名）：
+            src/gz local_core file:///mnt/usb/repo/repo/targets/<board>/<sub>/packages
+            src/gz local_base file:///mnt/usb/repo/repo/packages/<arch>/base
+            src/gz local_kmods file:///mnt/usb/repo/repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>
+            src/gz local_luci file:///mnt/usb/repo/repo/packages/<arch>/luci
+
+          注意：
+          1) 24.10 是 opkg，索引是 Packages 系列，没有 packages.adb（那是 apk v3 / 25.12）；
+          2) kmod 的目录名必须与本机 `opkg info kernel` 的版本完全一致，跨内核装不上；
+          3) 不要安装 kernel 包（会覆盖运行中的内核）。
           EOF
 
-          # 7. 压缩打包（安装包本身已压缩，使用存储模式加快速度）
+          # 6. 压缩打包（安装包本身已压缩，使用存储模式加快速度）
           rm -f "/workdir/${ZIP_NAME}"
           (cd "$STAGE" && zip -q -0 -r "/workdir/${ZIP_NAME}" ./*)
           du -sh "/workdir/${ZIP_NAME}"
@@ -472,6 +476,7 @@ jobs:
             exit 1
           fi
           echo "PKG_ZIP=/workdir/${ZIP_NAME}" >> $GITHUB_ENV
+
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: 备份原生rootfs升级包(防止打包脚本清理)
@@ -587,7 +592,7 @@ jobs:
             🔑 默认密码： password
             🌐 默认地址： DHCP（请在路由器管理页面查看设备IP）
             📦 全量IPK： 全部 kmod + package 安装包压缩包（仿官方kmods目录命名）
-            🔐 离线源索引： 压缩包内 Packages/Packages.gz（opkg，已尽量签名）+ 官方布局索引（详见 README-PKG-REPO.txt）
+            🔐 离线源索引： 按官方目录布局，每个目录自带 Packages/Packages.gz/Packages.sig（opkg 源配置只写目录名，一键启用见 enable-local-repo.sh）
           artifacts: ${{ env.FIRMWARE }}/*
 
       - name: 清理Releases
