@@ -373,7 +373,11 @@ jobs:
             FW_ADDED=0
             while IFS= read -r f; do
               b=$(basename "$f")
-              if [ -e "$CORE_DIR/$b" ]; then
+              # 按包名（而非文件名）判重：同一包的两个版本同时进入 core 索引，
+              # apk/opkg 会解析出 duplicate package 或随机构建依赖树，必须避免
+              stem=$(printf '%s' "$b" | sed -E 's/[-_][0-9][^-_]*[-_]r[0-9]+.*$//')
+              if [ -e "$CORE_DIR/$b" ] || ls "$CORE_DIR" 2>/dev/null | grep -q "^${stem}[-_]"; then
+                echo "  = firmware 已存在同名包，跳过: $b"
                 continue
               fi
               if cp -f "$f" "$CORE_DIR/"; then
@@ -445,7 +449,8 @@ jobs:
               fi
               printf '%s\n' "$ctl" | awk -v fn="$b" -v sz="$(stat -c%s "$f")" -v sh="$(sha256sum "$f" | cut -d' ' -f1)" '
                 /^Description:/ && !done { print "Filename: " fn; print "Size: " sz; print "SHA256sum: " sh; done=1 }
-                { print }' >> "$d/Packages"
+                { print }
+                END { if (!done) { print "Filename: " fn; print "Size: " sz; print "SHA256sum: " sh } }' >> "$d/Packages"
               echo "" >> "$d/Packages"
             done
             if [ -s "$d/Packages" ]; then
@@ -460,7 +465,8 @@ jobs:
           IDX_DIRS=0
           while IFS= read -r d; do
             gen_opkg_index "$d"
-            IDX_DIRS=$((IDX_DIRS + 1))
+            # 只统计真正产出了索引的目录（find 会遍历到 repo、repo/targets 等空目录）
+            [ -s "$d/Packages" ] && IDX_DIRS=$((IDX_DIRS + 1))
           done < <(find "$REPO" -type d | sort)
           IDX_PKGS=$(find "$REPO" -name Packages -type f -exec cat {} + 2>/dev/null | grep -c '^Package:' || true)
           echo "[OK] 已为 ${IDX_DIRS} 个目录生成索引，索引共收录 ${IDX_PKGS} 个包"
