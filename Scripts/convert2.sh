@@ -149,12 +149,37 @@ cd "$BASE_DIR"
 log "工作目录: $BASE_DIR"
 
 # ---- 0. 依赖 ----------------------------------------------------------------
+# apt.llvm.org 之类的第三方快照源每夜重建，重建窗口内 InRelease 会缺失，
+# 此时 `apt-get update` 整体返回 100，会把整个打包步骤带崩（core/kmod 包
+# 早就做好了，却因为装一个 30KB 小工具失败而全部丢弃）。这里做两级降级：
+#   1) update 报错不致命，继续尝试安装；
+#   2) install 仍失败时，逐个源单独校验，只临时屏蔽报错的那个源再重试。
 if ! command -v img2simg >/dev/null 2>&1; then
     log "安装 img2simg (android-sdk-libsparse-utils)"
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq android-sdk-libsparse-utils
+    if ! sudo apt-get update -qq; then
+        warn "apt-get update 有源报错，逐个校验并临时屏蔽失效源"
+        APT_SRC_BAK=/tmp/apt-broken-src
+        sudo mkdir -p "$APT_SRC_BAK"
+        for f in /etc/apt/sources.list.d/*; do
+            [ -f "$f" ] || continue
+            if sudo apt-get update -qq \
+                 -o Dir::Etc::sourcelist="$f" \
+                 -o Dir::Etc::sourceparts="-" >/dev/null 2>&1; then
+                continue
+            fi
+            warn "屏蔽失效源: $f"
+            sudo mv -f "$f" "$APT_SRC_BAK/$(basename "$f")" || true
+        done
+        sudo apt-get update -qq || warn "仍有源告警，继续尝试安装"
+    fi
+    if ! sudo apt-get install -y -qq android-sdk-libsparse-utils; then
+        warn "安装失败，刷新索引后重试一次"
+        sudo apt-get update -qq || true
+        sudo apt-get install -y -qq android-sdk-libsparse-utils || true
+    fi
 fi
-command -v img2simg >/dev/null 2>&1 || die "img2simg 安装失败"
+command -v img2simg >/dev/null 2>&1 \
+    || die "img2simg 安装失败（可先手动 apt-get install android-sdk-libsparse-utils）"
 
 # ---- 1. 工具与 uboot 直刷包 -------------------------------------------------
 if [ ! -x ./AmlImg ]; then
