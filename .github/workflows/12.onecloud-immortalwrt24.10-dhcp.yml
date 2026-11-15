@@ -292,7 +292,7 @@ jobs:
           echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
           echo "获取到的内核版本为: $KERNEL_VER"
 
-      - name: 打包全部安装包(仿官方kmods目录命名)
+      - name: 打包Core+Kmod安装包(产出 Core_Kmod-<内核版本>-<哈希>.zip)
         working-directory: ./openwrt
         run: |
           # ==========================================================
@@ -302,23 +302,40 @@ jobs:
           # base/luci/packages/routing/telephony 等应用源不打进包，
           # 设备端继续使用官方源/第三方源，避免与本地源同名包冲突
           # ==========================================================
-          # 1. 压缩包命名：优先 kmods 目录名；其次从 kernel 包名提取 vermagic；
-          #    最后兜底 内核版本-1-源码commit前32位
+          # 1. 压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
+          #    哈希优先取 kmods 目录名末尾的 vermagic（与 kernel 依赖串一致）；
+          #    目录缺失时从 kernel_<ver>~<vermagic>-r1.ipk 文件名提取；
+          #    仍取不到则兜底用源码 commit 前 32 位
+          KVER3="${KERNEL_VER:-}"
+          KMOD_HASH=""
           KMOD_DIR=$(find bin -type d -path "*kmods/*" | head -n 1)
           if [ -n "$KMOD_DIR" ]; then
-            KMOD_NAME=$(basename "$KMOD_DIR")
-          else
+            KMOD_BASE=$(basename "$KMOD_DIR")
+            KMOD_HASH="${KMOD_BASE##*-}"
+            [ -n "$KVER3" ] || KVER3="${KMOD_BASE%%-*}"
+          fi
+          if [ -z "$KMOD_HASH" ] || [ -z "$KVER3" ]; then
             KPKG=$(ls bin/targets/*/*/packages/kernel_*.ipk 2>/dev/null | head -n 1)
             if [ -n "$KPKG" ] && [ -f "$KPKG" ]; then
-              KV=$(basename "$KPKG" | sed -E 's/^kernel_([0-9.]+)~([0-9a-f]+)-r.*\.ipk$/\1-1-\2/')
-              [ -n "$KV" ] && KMOD_NAME="$KV"
+              KB=$(basename "$KPKG")
+              if [ -z "$KVER3" ]; then
+                KVER3=$(printf '%s' "$KB" | sed -nE 's/^kernel_([0-9]+\.[0-9]+\.[0-9]+)~.*$/\1/p')
+              fi
+              if [ -z "$KMOD_HASH" ]; then
+                KMOD_HASH=$(printf '%s' "$KB" | sed -nE 's/^kernel_[0-9.]+~([0-9a-f]+)-r[0-9].*\.ipk$/\1/p')
+              fi
             fi
           fi
-          if [ -z "${KMOD_NAME:-}" ]; then
-            SRC_HASH=$(git rev-parse HEAD | cut -c1-32)
-            KMOD_NAME="${KERNEL_VER}-1-${SRC_HASH}"
-          fi
-          ZIP_NAME="${KMOD_NAME}.zip"
+          # 校验哈希为十六进制，否则回退
+          case "$KMOD_HASH" in
+            ""|*[!0-9a-f]*) KMOD_HASH=$(git rev-parse HEAD 2>/dev/null | cut -c1-32 || true) ;;
+          esac
+          # 二次校验：无 git 提交时 rev-parse 会输出 "HEAD"，此时用占位值
+          case "$KMOD_HASH" in
+            ""|*[!0-9a-f]*) KMOD_HASH="unknown" ;;
+          esac
+          [ -n "$KVER3" ] || KVER3="unknown"
+          ZIP_NAME="Core_Kmod-${KVER3}-${KMOD_HASH}.zip"
           echo "安装包压缩包名: $ZIP_NAME"
 
           # 2. 只归档板级两目录（不收 bin/packages/<arch> 下的应用源包）
@@ -422,6 +439,8 @@ jobs:
           cat > "$STAGE/README-PKG-REPO.txt" <<'EOF'
           24.10 本地软件源（只含 core 板级包 + kmods 内核模块，共两个目录）
           ================================================================
+          压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
+          （哈希为内核 vermagic，与 opkg info kernel 输出中的串一致）
           本包与官方 Supplementary Files 中的 packages/、kmods/ 两个目录对应：
             repo/targets/<board>/<sub>/packages/                        ← distfeeds 的 core 源
             repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/    ← distfeeds 的 kmods 源
@@ -575,7 +594,7 @@ jobs:
             🧠 内核版本： ${{ env.KERNEL_VER }}
             🔑 默认密码： password
             🌐 默认地址： DHCP（请在路由器管理页面查看设备IP）
-            📦 全量IPK： 全部 kmod + package 安装包压缩包（仿官方kmods目录命名）
+            📦 Core+Kmod包： 板级 core + kmods 两个目录安装包（Core_Kmod-<内核版本>-<哈希>.zip）
             🔐 离线源： 仅 core+kmods 两个本地目录（与官方Supplementary Files一致），base/luci等继续用官方源避免同名冲突
           artifacts: ${{ env.FIRMWARE }}/*
 
