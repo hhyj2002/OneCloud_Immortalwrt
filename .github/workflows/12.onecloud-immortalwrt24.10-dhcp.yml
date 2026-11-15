@@ -296,46 +296,51 @@ jobs:
         working-directory: ./openwrt
         run: |
           # ==========================================================
-          # 24.10 为 opkg/ipk 体系：官方软件源的配置里只写"目录名"，
-          # 索引文件是该目录下的 Packages / Packages.gz / Packages.sig，
-          # 不存在 packages.adb（apk v3 才有，24.10 默认不产 apk）。
-          # 因此这里按官方 releases 布局原样归档，每个目录自带索引：
-          #   repo/packages/<arch>/<feed>/...
-          #   repo/targets/<board>/<sub>/packages/...
-          #   repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>/...
+          # 按官方 Supplementary Files 的板级布局，只归档两个目录：
+          #   repo/targets/<board>/<sub>/packages/                  ← distfeeds 的 core 源
+          #   repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/ ← distfeeds 的 kmods 源
+          # base/luci/packages/routing/telephony 等应用源不打进包，
+          # 设备端继续使用官方源/第三方源，避免与本地源同名包冲突
           # ==========================================================
-          # 1. 优先使用编译系统生成的 kmods 目录名（与官方格式完全一致）
+          # 1. 压缩包命名：优先 kmods 目录名；其次从 kernel 包名提取 vermagic；
+          #    最后兜底 内核版本-1-源码commit前32位
           KMOD_DIR=$(find bin -type d -path "*kmods/*" | head -n 1)
           if [ -n "$KMOD_DIR" ]; then
             KMOD_NAME=$(basename "$KMOD_DIR")
           else
-            KMOD_NAME=""
+            KPKG=$(ls bin/targets/*/*/packages/kernel_*.ipk 2>/dev/null | head -n 1)
+            if [ -n "$KPKG" ] && [ -f "$KPKG" ]; then
+              KV=$(basename "$KPKG" | sed -E 's/^kernel_([0-9.]+)~([0-9a-f]+)-r.*\.ipk$/\1-1-\2/')
+              [ -n "$KV" ] && KMOD_NAME="$KV"
+            fi
           fi
-          # 2. 兜底：内核版本-1-源码commit哈希(32位)
-          if [ -z "$KMOD_NAME" ]; then
+          if [ -z "${KMOD_NAME:-}" ]; then
             SRC_HASH=$(git rev-parse HEAD | cut -c1-32)
             KMOD_NAME="${KERNEL_VER}-1-${SRC_HASH}"
           fi
           ZIP_NAME="${KMOD_NAME}.zip"
           echo "安装包压缩包名: $ZIP_NAME"
 
-          # 3. 按官方相对路径归位（只保留一份，不做扁平复制，避免体积翻倍）
+          # 2. 只归档板级两目录（不收 bin/packages/<arch> 下的应用源包）
           STAGE=/workdir/pkg_stage
           REPO="$STAGE/repo"
           rm -rf "$STAGE"
           mkdir -p "$REPO"
-          find bin -type f \( -name "*.ipk" -o -name "*.apk" \) -print 2>/dev/null | while IFS= read -r f; do
-            rel=${f#bin/}
-            mkdir -p "$REPO/$(dirname "$rel")"
-            cp -n "$f" "$REPO/$rel" 2>/dev/null || true
+          COUNT=0
+          for sub in packages kmods; do
+            while IFS= read -r f; do
+              rel=${f#bin/}
+              mkdir -p "$REPO/$(dirname "$rel")"
+              cp -n "$f" "$REPO/$rel" 2>/dev/null || true
+              COUNT=$((COUNT + 1))
+            done < <(find bin/targets/*/*/"$sub" -type f \( -name "*.ipk" -o -name "*.apk" \) 2>/dev/null)
           done
-          PKG_COUNT=$(find "$REPO" -type f \( -name "*.ipk" -o -name "*.apk" \) | wc -l)
-          [ "$PKG_COUNT" -gt 0 ] || { echo "::error::没有找到任何 ipk/apk 安装包"; exit 1; }
-          echo "共收集 $PKG_COUNT 个安装包"
-          echo "=== 软件源目录（官方布局） ==="
+          [ "$COUNT" -gt 0 ] || { echo "::error::未找到板级包（bin/targets/*/packages、*/kmods）"; exit 1; }
+          echo "共收集 $COUNT 个安装包（板级 packages + kmods）"
+          echo "=== 目录分布 ==="
           find "$REPO" -type f \( -name "*.ipk" -o -name "*.apk" \) -printf '%h\n' | sed "s|^$REPO/||" | sort | uniq -c
 
-          # 4. 逐个目录生成 opkg 索引（索引必须与包同目录，Filename 用纯文件名）
+          # 3. 逐目录生成 opkg 索引（索引与包同目录，Filename 用纯文件名）
           USIGN="$PWD/staging_dir/host/bin/usign"
           [ -x "$USIGN" ] || USIGN=$(command -v usign 2>/dev/null || true)
           SIGN_KEY="$PWD/key-build"
@@ -379,11 +384,8 @@ jobs:
           done < <(find "$REPO" -type d | sort)
           IDX_PKGS=$(find "$REPO" -name Packages -type f -exec cat {} + 2>/dev/null | grep -c '^Package:' || true)
           echo "[OK] 已为 ${IDX_DIRS} 个目录生成索引，索引共收录 ${IDX_PKGS} 个包"
-          if [ "$(find "$REPO" -name '*.apk' | wc -l)" -gt 0 ]; then
-            echo "::warning::检测到 .apk：24.10 默认走 opkg，本步骤只生成 opkg 索引（apk 索引见 23/43 工作流）"
-          fi
 
-          # 5. 公钥 + 一键启用脚本（opkg 要求公钥文件名是 usign 指纹）
+          # 4. 公钥 + 一键启用脚本（只会添加上面两个目录对应的源）
           if [ "$CAN_SIGN" = "1" ] && [ -s "$PWD/key-build.pub" ]; then
             cp -f "$PWD/key-build.pub" "$STAGE/key-build.pub"
           fi
@@ -391,7 +393,7 @@ jobs:
           cat > "$STAGE/enable-local-repo.sh" <<'EOS'
           #!/bin/sh
           # 在路由器上执行： sh ./enable-local-repo.sh
-          # 自动把本目录下的各级软件源（目录形式，与官方 distfeeds 写法一致）加入 opkg
+          # 只添加本地 core 与 kmods 两条源；base/luci 等继续走官方源，无需改动
           set -e
           BASE=$(cd "$(dirname "$0")" && pwd)
           CONF=/etc/opkg/customfeeds.conf
@@ -418,31 +420,35 @@ jobs:
           chmod +x "$STAGE/enable-local-repo.sh"
 
           cat > "$STAGE/README-PKG-REPO.txt" <<'EOF'
-          24.10 离线软件源使用说明（opkg / ipk）
-          ======================================
-          本包内是官方 releases 目录布局，每个目录自带 Packages / Packages.gz(/sig)：
-            repo/packages/<arch>/<feed>/                        软件包（base/luci/packages/routing...）
-            repo/targets/<board>/<sub>/packages/                板级包（base-files 等）
-            repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>/   内核模块
+          24.10 本地软件源（只含 core 板级包 + kmods 内核模块，共两个目录）
+          ================================================================
+          本包与官方 Supplementary Files 中的 packages/、kmods/ 两个目录对应：
+            repo/targets/<board>/<sub>/packages/                        ← distfeeds 的 core 源
+            repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/    ← distfeeds 的 kmods 源
 
-          【推荐】一键启用（自动生成所有 src/gz 目录型源）：
-            解压到路由器（如 /mnt/usb/repo），执行：
+          base / luci / packages / routing / telephony 等应用源【不在本包内】，
+          请继续使用官方源或第三方源（distfeeds.conf 保持原样即可），
+          这样本地源与官方源没有同名包，不会互相覆盖。
+
+          【一键启用】解压到路由器或挂载目录后执行：
               sh /mnt/usb/repo/enable-local-repo.sh
               opkg update
 
-          【手动】等价写法（与官方 feeds.mk 一致，只写目录名，不写文件名）：
-            src/gz local_core file:///mnt/usb/repo/repo/targets/<board>/<sub>/packages
-            src/gz local_base file:///mnt/usb/repo/repo/packages/<arch>/base
-            src/gz local_kmods file:///mnt/usb/repo/repo/targets/<board>/<sub>/kmods/<内核版本>-<rel>-<vermagic>
-            src/gz local_luci file:///mnt/usb/repo/repo/packages/<arch>/luci
+          【手动】在 /etc/opkg/customfeeds.conf 中加两条（与官方 distfeeds 写法一致）：
+              src/gz local_core  file:///mnt/usb/repo/repo/targets/<board>/<sub>/packages
+              src/gz local_kmods file:///mnt/usb/repo/repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>
+
+          【局域网 HTTP 方式】把 repo/ 下的目录结构放到 Web 服务器根，例如：
+              src/gz local_core  http://192.168.5.1/onecloud/immortalwrt/24.10/targets/<board>/<sub>/packages
+              src/gz local_kmods http://192.168.5.1/onecloud/immortalwrt/24.10/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>
 
           注意：
-          1) 24.10 是 opkg，索引是 Packages 系列，没有 packages.adb（那是 apk v3 / 25.12）；
-          2) kmod 的目录名必须与本机 `opkg info kernel` 的版本完全一致，跨内核装不上；
-          3) 不要安装 kernel 包（会覆盖运行中的内核）。
+          1) kmod 目录名必须与本机内核完全一致（opkg info kernel 或 cat /proc/version 核对）；
+          2) 不要 opkg install kernel（会覆盖运行中的内核）；
+          3) 索引用编译时的 key-build 签名；若无签名，注释 /etc/opkg.conf 中的 option check_signature。
           EOF
 
-          # 6. 压缩打包（安装包本身已压缩，使用存储模式加快速度）
+          # 5. 压缩打包（安装包本身已压缩，使用存储模式加快速度）
           rm -f "/workdir/${ZIP_NAME}"
           (cd "$STAGE" && zip -q -0 -r "/workdir/${ZIP_NAME}" ./*)
           du -sh "/workdir/${ZIP_NAME}"
@@ -570,7 +576,7 @@ jobs:
             🔑 默认密码： password
             🌐 默认地址： DHCP（请在路由器管理页面查看设备IP）
             📦 全量IPK： 全部 kmod + package 安装包压缩包（仿官方kmods目录命名）
-            🔐 离线源索引： 按官方目录布局，每个目录自带 Packages/Packages.gz/Packages.sig（opkg 源配置只写目录名，一键启用见 enable-local-repo.sh）
+            🔐 离线源： 仅 core+kmods 两个本地目录（与官方Supplementary Files一致），base/luci等继续用官方源避免同名冲突
           artifacts: ${{ env.FIRMWARE }}/*
 
       - name: 清理Releases
