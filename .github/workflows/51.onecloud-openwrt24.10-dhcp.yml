@@ -424,6 +424,28 @@ jobs:
           echo "=== 目录分布 ==="
           find "$REPO" -type f \( -name "*.ipk" -o -name "*.apk" \) -printf '%h\n' | sed "s|^$REPO/||" | sort | uniq -c
 
+          # 2.5 去掉 ipk 文件名中的架构后缀（如 _arm_cortex-a5_neon-vfpv4、_all），
+          #     与 apk 包命名风格对齐；索引在下一步按暂存文件名重新生成，Filename 自动同步
+          PKG_ARCH=$(find "$REPO" -type f -name '*.ipk' -printf '%f\n' 2>/dev/null \
+            | sed -nE 's/^.*-r[0-9]+_//; s/\.ipk$//p' | grep -v '^all$' | sort | uniq -c | sort -rn | head -n 1 | awk '{print $2}')
+          [ -n "$PKG_ARCH" ] || PKG_ARCH=$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' .config | head -n 1)
+          if [ -n "$PKG_ARCH" ]; then
+            RENAMED=0
+            while IFS= read -r f; do
+              b=$(basename "$f")
+              case "$b" in
+                *_${PKG_ARCH}.ipk) stem=${b%_${PKG_ARCH}.ipk} ;;
+                *_all.ipk)         stem=${b%_all.ipk} ;;
+                *) continue ;;
+              esac
+              mv -f "$f" "$(dirname "$f")/$stem.ipk"
+              RENAMED=$((RENAMED + 1))
+            done < <(find "$REPO" -type f -name '*.ipk')
+            echo "已去掉架构后缀(_${PKG_ARCH}/_all)的安装包: $RENAMED 个"
+          else
+            echo "::warning::未能确定目标架构，跳过去后缀"
+          fi
+
           # 3. 逐目录生成 opkg 索引（索引与包同目录，Filename 用纯文件名）
           USIGN="$PWD/staging_dir/host/bin/usign"
           [ -x "$USIGN" ] || USIGN=$(command -v usign 2>/dev/null || true)
