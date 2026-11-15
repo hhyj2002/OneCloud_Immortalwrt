@@ -584,7 +584,14 @@ jobs:
             cp -f "$BASE/public-key.pem" /etc/apk/keys/
             echo "已导入公钥: /etc/apk/keys/public-key.pem"
           fi
+          # 25.12 的 apk 默认读 /etc/apk/repositories.d/*.list；/etc/apk/repositories 也仍会被读取。
+          # 若该路径被做成了目录，则改写到 repositories.d 下，避免 echo >> 失败。
           CONF=/etc/apk/repositories
+          if [ -d "$CONF" ]; then
+            CONF=/etc/apk/repositories.d/99-local-core.list
+            mkdir -p /etc/apk/repositories.d
+            touch "$CONF"
+          fi
           N=0
           for P in $(cd "$BASE" && find repo -name packages.adb -type f 2>/dev/null); do
             LINE="ndx file://$BASE/$P"
