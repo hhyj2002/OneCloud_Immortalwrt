@@ -608,7 +608,7 @@ jobs:
           25.12 本地软件源（只含 core 板级包 + kmods 内核模块，共两个目录）
           ================================================================
           压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
-          （哈希为内核 vermagic，与 apk info kernel 或 /etc/apk/arch 对应的内核串一致）
+          （哈希为内核 vermagic，可用 apk info -e kernel 或 apk list -I kernel 核对）
           本包与官方 Supplementary Files 中的 packages/、kmods/ 两个目录一一对应：
             repo/targets/<board>/<sub>/packages/                        ← core 源
             repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/    ← kmods 源
@@ -630,9 +630,10 @@ jobs:
               ndx http://192.168.5.1/onecloud/immortalwrt/25.12/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/packages.adb
 
           注意：
-          1) kmod 必须与本机内核完全一致（apk info kernel 或 uname -r 核对），
-             内核不同时本地 kmods 源会因 kernel 依赖不满足而装不上；
-          2) 不要安装 kernel 包（会覆盖运行中的内核）；
+          1) kmod 必须与本机内核完全一致（apk info -e kernel / uname -r 核对），
+             本包内核串要与固件同批构建；内核不一致时 apk 会尝试安装本包里的 kernel
+             包来满足 kernel= 依赖（等于覆盖运行中的内核），此时请勿继续；
+          2) 不要主动安装或升级 kernel 包（会覆盖运行中的内核）；
           3) packages.adb 已用 public-key.pem 对应私钥签名，把 public-key.pem 放进
              /etc/apk/keys/ 即可；若提示签名不可信，可临时加 --allow-untrusted。
           EOF
