@@ -448,15 +448,12 @@ jobs:
           #     firmware 属 feeds/base（架构包），不由 bin/targets/<b>/<s>/packages 产出；
           #     而 kmod 的元数据里对它们是硬依赖（如 kmod-rtl8822ce -> rtl8822ce-firmware），
           #     apk 依赖校验很严，缺固件会直接拒绝安装，所以随 core 一起归档。
-          #     跳过 kmod-*firmware*（属内核模块，已在 kmods 目录，避免重复收录）。
+          #     kmod-*firmware* 也一并收（属内核固件包），收集时按 kmod-* 前缀归入 kmods 目录。
           CORE_DIR=$(find bin/targets/*/*/packages -maxdepth 0 -type d 2>/dev/null | head -n 1 || true)
           if [ -n "$CORE_DIR" ]; then
             FW_ADDED=0
             while IFS= read -r f; do
               b=$(basename "$f")
-              case "$b" in
-                kmod-*firmware*) continue ;;
-              esac
               if [ -e "$CORE_DIR/$b" ]; then
                 continue
               fi
@@ -477,9 +474,23 @@ jobs:
           rm -rf "$STAGE"
           mkdir -p "$REPO"
           COUNT=0
+          KMOD_REL="kmods/${KVER3:-unknown}-1-${KMOD_HASH:-unknown}"
           for sub in packages kmods; do
             while IFS= read -r f; do
               rel=${f#bin/}
+              b=$(basename "$f")
+              case "$b" in
+                kmod-*)
+                  # 构建树把 kmod 与其它板级包一起输出在 bin/targets/<b>/<s>/packages/，
+                  # 官方布局的 kmods/<ver>-1-<vermagic>/ 只有 release buildbot 才会生成，
+                  # 这里按包名把 kmod 拆到 kmods 目录，与官方 Supplementary Files 保持一致
+                  base=${rel%/packages/*}
+                  if [ "$base" = "$rel" ]; then
+                    base=${rel%/kmods/*}
+                  fi
+                  rel="$base/$KMOD_REL/$b"
+                  ;;
+              esac
               mkdir -p "$REPO/$(dirname "$rel")"
               cp -n "$f" "$REPO/$rel" 2>/dev/null || true
               COUNT=$((COUNT + 1))
