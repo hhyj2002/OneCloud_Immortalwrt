@@ -361,7 +361,34 @@ jobs:
           ZIP_NAME="Core_Kmod-${KVER3}-${KMOD_HASH}.zip"
           echo "安装包压缩包名: $ZIP_NAME"
 
+          # 1.5 把 firmware 包补进 core：先落盘到 bin 源目录，第 2 步统一收集
+          #     firmware 属 feeds/base（架构包），不由 bin/targets/<b>/<s>/packages 产出；
+          #     而 kmod 依赖它们（如 kmod-rtl8822ce -> rtl8822ce-firmware），
+          #     opkg 虽能强装，但不带固件时模块加载必然失败，所以随 core 一起归档。
+          #     跳过 kmod-*firmware*（属内核模块，已在 kmods 目录，避免重复收录）。
+          CORE_DIR=$(find bin/targets/*/*/packages -maxdepth 0 -type d 2>/dev/null | head -n 1 || true)
+          if [ -n "$CORE_DIR" ]; then
+            FW_ADDED=0
+            while IFS= read -r f; do
+              b=$(basename "$f")
+              case "$b" in
+                kmod-*firmware*) continue ;;
+              esac
+              if [ -e "$CORE_DIR/$b" ]; then
+                continue
+              fi
+              if cp -f "$f" "$CORE_DIR/"; then
+                FW_ADDED=$((FW_ADDED + 1))
+                echo "  + firmware: $b"
+              else
+                echo "::warning::firmware 拷贝失败: $b"
+              fi
+            done < <(find bin/packages/*/base -maxdepth 1 -type f \( -name '*firmware*.ipk' -o -name '*firmware*.apk' \) 2>/dev/null)
+            echo "已补入 core 的 firmware 包: $FW_ADDED 个（kmod 依赖的固件）"
+          fi
+
           # 2. 只归档板级两目录（不收 bin/packages/<arch> 下的应用源包）
+          #    唯一例外见上一步：kmod 依赖的 firmware 包已补进 core
           STAGE=/workdir/pkg_stage
           REPO="$STAGE/repo"
           rm -rf "$STAGE"
