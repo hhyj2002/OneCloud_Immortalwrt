@@ -344,17 +344,18 @@ jobs:
           else
             echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
           fi
-          # 仿官方发行版：编译对应源码发行版的全部 kmod 包 + 全部 package 包（生成 apk 安装包）
+          # 仿官方发行版：编译对应源码发行版的全部 kmod 包（生成 apk 安装包）
           if grep -q "CONFIG_ALL_KMODS" .config; then
             sed -i 's/^CONFIG_ALL_KMODS.*/CONFIG_ALL_KMODS=y/' .config
           else
             echo "CONFIG_ALL_KMODS=y" >> .config
           fi
-          if grep -q "CONFIG_ALL_PACKAGES" .config; then
-            sed -i 's/^CONFIG_ALL_PACKAGES.*/CONFIG_ALL_PACKAGES=y/' .config
-          else
-            echo "CONFIG_ALL_PACKAGES=y" >> .config
-          fi
+          # 不要再开 CONFIG_ALL_PACKAGES：
+          #   它只会把 base/luci/packages/routing/telephony 全部应用包编译一遍
+          #   （如 feeds/routing/batman-adv），输出在 bin/packages/<arch>/<feed>；
+          #   而本工作流只归档 bin/targets/<b>/<s>/packages 与 kmods，应用包最终全部
+          #   丢弃，开了等于白编译 1~2 小时。全部 kmod 由 CONFIG_ALL_KMODS 负责，
+          #   与 ALL_PACKAGES 无关；板级 core 的完整性由打包步骤前的自检兜底。
           make defconfig
           make download -j$(( $(nproc) * 2 ))
           find dl -size -1k -exec rm -f {} \;
@@ -415,6 +416,17 @@ jobs:
           # apk(v3) 的索引为 packages.adb（签名内嵌，无独立 .sig），
           # 必须与 apk 放在同一目录，apk 按 <索引目录>/<包名>-<版本>.apk 取包。
           # ==========================================================
+          # 0. 板级包完整性自检（关掉 CONFIG_ALL_PACKAGES 后 core 必须仍然齐全）
+          CORE_FILES=$(find bin/targets/*/*/packages -maxdepth 1 -type f \( -name '*.apk' -o -name '*.ipk' \) 2>/dev/null | wc -l)
+          KMOD_FILES=$(find bin/targets/*/*/packages -maxdepth 1 -type f -name 'kmod-*' 2>/dev/null | wc -l)
+          CORE_ONLY=$((CORE_FILES - KMOD_FILES))
+          echo "板级包自检：packages 目录 ${CORE_FILES} 个文件，其中 kmod ${KMOD_FILES} 个，非 kmod ${CORE_ONLY} 个"
+          [ "$KMOD_FILES" -ge 850 ] || { echo "::error::kmod 数量异常($KMOD_FILES)，CONFIG_ALL_KMODS 可能未生效"; exit 1; }
+          [ "$CORE_ONLY" -ge 35 ] || { echo "::error::板级包数量异常($CORE_ONLY)，疑似 core 缺包"; exit 1; }
+          for must in kernel base-files libc fstools dropbear; do
+            [ -n "$(find bin/targets/*/*/packages -maxdepth 1 -type f \( -name "${must}-*" -o -name "${must}_*" \) -print -quit 2>/dev/null)" ] \
+              || { echo "::error::板级包缺少关键包 $must"; exit 1; }
+          done
           # 1. 压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
           #    哈希优先取 kmods 目录名末尾的 vermagic（与 kernel 依赖串一致）；
           #    目录缺失时从 kernel-<ver>~<vermagic>-r1.apk 文件名提取；
