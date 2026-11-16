@@ -336,17 +336,43 @@ jobs:
     # LEDE 的 include/target.mk 把 luci-app-ssr-plus 硬编码进 DEFAULT_PACKAGES.router，
     # 会被转成 select PACKAGE_luci-app-ssr-plus（select 优先级高于 .config 里的 is not set，
     # 写 # CONFIG_PACKAGE_luci-app-ssr-plus is not set 无效），只能从源码默认包里剔除。
-    # 不剔除的后果：ssr-plus 默认选中 Xray 内核 → 连带编译 xray-core 26.x，
-    # 而 xray-core 的 cronet-go 存在 #cgo LDFLAGS "-l:libcronet.a" 被 Go 拦截的问题，编译必失败。
+    # 不剔除的后果：ssr-plus 默认选中 Xray 内核 → 连带编译 xray-core 26.x。
+    #
+    # ★ 2026-11-14 失败的真正根因（仅剔除 ssr-plus 不够）：
+    #   setup.sh 里 feeds install -a 会把 helloworld 的 luci-app-ssr-plus 装回
+    #   package/feeds/helloworld/，而它的 Makefile 定义了一个【不带父依赖】的 choice：
+    #     choice "V2ray-core Selection"
+    #       default PACKAGE_luci-app-ssr-plus_INCLUDE_Xray
+    #       config ..._INCLUDE_Xray: select PACKAGE_xray-core
+    #   只要包目录存在，哪怕 ssr-plus 本身未被选中，make defconfig 也会按 choice
+    #   默认值强制 select xray-core。packages feed 的 xray-core 升到 26.11.9 后，
+    #   其 cronet-go 的 #cgo LDFLAGS "-l:libcronet.a" 被 Go 安全检查拦截
+    #   （invalid flag in #cgo LDFLAGS），编译必失败。
+    #   所以这里必须把 feeds install 装回的 ssr-plus / xray-core 包目录一并删除，
+    #   配合 Config/onecloud-lede6.18.config 里的 INCLUDE_NONE_V2RAY=y 双保险。
     - name: 移除默认包中的 ssr-plus（防连带编译 xray-core）
       working-directory: ./openwrt
       run: |
+          # 1) 从 include/target.mk 的默认包中剔除 ssr-plus，并断言剔除成功
           if grep -q "luci-app-ssr-plus" include/target.mk; then
             sed -i 's/ luci-app-ssr-plus//g' include/target.mk
-            echo "✅ 已从 include/target.mk 的默认包中移除 luci-app-ssr-plus"
-          else
-            echo "ℹ️ include/target.mk 中未发现 luci-app-ssr-plus，跳过"
           fi
+          if grep -q "luci-app-ssr-plus" include/target.mk; then
+            echo "::error::include/target.mk 仍含 luci-app-ssr-plus，剔除失败，终止编译"
+            exit 1
+          fi
+          echo "✅ include/target.mk 已确认不含 luci-app-ssr-plus"
+
+          # 2) 删除 feeds install -a 刚刚装回的代理包目录（本步骤在 feeds install 之后，
+          #    此时删除才真正有效；早前步骤里的 rm 在 feeds update 之前，会被装回来）
+          rm -rf package/feeds/helloworld/luci-app-ssr-plus
+          rm -rf package/feeds/packages/xray-core package/feeds/packages/v2ray-core \
+                 package/feeds/packages/sing-box package/feeds/packages/hysteria
+          rm -rf feeds/helloworld/luci-app-ssr-plus feeds/packages/net/xray-core \
+                 feeds/packages/net/v2ray-core feeds/packages/net/sing-box \
+                 feeds/packages/net/hysteria
+          echo "✅ 已删除 feeds install 装回的 ssr-plus / xray-core 等代理包目录"
+
           grep -n "DEFAULT_PACKAGES.router" include/target.mk
 
     - name: 下载编译环境
