@@ -3,7 +3,7 @@
 # Description: Use Releases file to packaging
 # Cron: min (0 - 59) / hour (0 - 23) / day of month (1 - 31) / month (1 - 12) / day of week (0 - 6)(Sunday - Saturday)
 #========================================================================================================================
-name: 31.onecloud-lede6.18直刷包编译DHCP
+name: 31.onecloud-lede6.18直刷包编译DHCP+Core_Kmod
 
 on:
   # 已去掉 IP 输入项：IPv4/IPv6 全部自动获取，点 Run workflow 直接编译即可
@@ -365,13 +365,34 @@ jobs:
 
           # 2) 删除 feeds install -a 刚刚装回的代理包目录（本步骤在 feeds install 之后，
           #    此时删除才真正有效；早前步骤里的 rm 在 feeds update 之前，会被装回来）
-          rm -rf package/feeds/helloworld/luci-app-ssr-plus
+          # 代理类剔除范围（本工作流启用 CONFIG_ALL 全量编译后，凡依赖可满足的包都会
+          # 被连带选中编译，必须整体剔除，否则 xray/naiveproxy 的 cronet 编译必挂，
+          # mihomo/v2raya 等也会白白拖慢编译）：
+          #   helloworld feed 整体（ssr-plus/naiveproxy/mihomo/shadowsocks-rust/...）
+          #   packages feed：xray-core / v2ray-core / sing-box / hysteria / mihomo /
+          #                  v2raya / v2ray-geodata / nikki / brook / trojan / chinadns-ng
+          #   luci feed：ssr-plus / v2raya / nikki / openclash / passwall / passwall2 /
+          #              homeproxy
+          # 用户需要的包全部来自 packages / luci feed 的非代理部分（同名包 feed 优先级高），
+          # 删除对固件 =y 配置零影响（=m 的代理包既不进固件也不进 Core_Kmod 包）。
+          rm -rf package/feeds/helloworld feeds/helloworld
           rm -rf package/feeds/packages/xray-core package/feeds/packages/v2ray-core \
-                 package/feeds/packages/sing-box package/feeds/packages/hysteria
-          rm -rf feeds/helloworld/luci-app-ssr-plus feeds/packages/net/xray-core \
-                 feeds/packages/net/v2ray-core feeds/packages/net/sing-box \
-                 feeds/packages/net/hysteria
-          echo "✅ 已删除 feeds install 装回的 ssr-plus / xray-core 等代理包目录"
+                 package/feeds/packages/sing-box package/feeds/packages/hysteria \
+                 package/feeds/packages/mihomo package/feeds/packages/v2raya \
+                 package/feeds/packages/v2ray-geodata package/feeds/packages/nikki \
+                 package/feeds/packages/brook package/feeds/packages/trojan \
+                 package/feeds/packages/chinadns-ng
+          rm -rf feeds/packages/net/xray-core feeds/packages/net/v2ray-core \
+                 feeds/packages/net/sing-box feeds/packages/net/hysteria \
+                 feeds/packages/net/mihomo feeds/packages/net/v2raya \
+                 feeds/packages/net/v2ray-geodata feeds/packages/net/nikki \
+                 feeds/packages/net/brook feeds/packages/net/trojan \
+                 feeds/packages/net/chinadns-ng
+          for app in luci-app-ssr-plus luci-app-v2raya luci-app-nikki luci-app-openclash \
+                     luci-app-passwall luci-app-passwall2 luci-app-homeproxy; do
+            rm -rf "package/feeds/luci/$app" "feeds/luci/applications/$app"
+          done
+          echo "✅ 已删除 feeds install 装回的 ssr-plus / xray-core / helloworld 等代理包目录"
 
           grep -n "DEFAULT_PACKAGES.router" include/target.mk
 
@@ -386,7 +407,31 @@ jobs:
             grep -q "^${sym}=y" .config || echo "${sym}=y" >> .config
           done
 
+          # ========== 全量编译开关（仿 12/51 号，为 Core_Kmod 安装包服务） ==========
+          # 编译全部 kmod + 全部 package（=m 只产 ipk 不进固件，固件本体不变），
+          # 供后面「打包Core+Kmod安装包」步骤归档板级 packages/kmods 两目录。
+          # ★ lede 的符号名是 CONFIG_ALL（config/Config-build.in），它会同时 select
+          #   ALL_KMODS / ALL_NONSHARED；24.10 的 CONFIG_ALL_PACKAGES 在 lede 里
+          #   不存在，写了会被 defconfig 静默丢弃，千万不要用。
+          for sym in CONFIG_ALL_KMODS CONFIG_ALL; do
+            if grep -q "^${sym}=y" .config; then
+              sed -i "s/^${sym}=.*/${sym}=y/" .config
+            else
+              echo "${sym}=y" >> .config
+            fi
+          done
+
           make defconfig
+
+          # 校验全量开关在 defconfig 之后仍然保留
+          for sym in CONFIG_ALL CONFIG_ALL_KMODS; do
+            if grep -q "^${sym}=y" .config; then
+              echo "✅ ${sym} 已启用（=m 安装包 $(grep -c '^CONFIG_PACKAGE_.*=m$' .config) 个）"
+            else
+              echo "::error::${sym} 未启用，Core_Kmod 包将缺少全量内容，终止编译！"
+              exit 1
+            fi
+          done
 
           # 校验这两个符号在 defconfig 之后仍然保留（依赖不满足会被 defconfig 丢掉）
           for sym in CONFIG_PACKAGE_odhcp6c CONFIG_PACKAGE_luci-proto-ipv6; do
@@ -450,6 +495,261 @@ jobs:
         fi
         echo "KERNEL_VER=$KERNEL_VER" >> $GITHUB_ENV
         echo "获取到的内核版本为: $KERNEL_VER"
+
+    # 与 12/51 号同口径：产出 Core_Kmod-<内核版本>-<vermagic>.zip
+    # 按官方 Supplementary Files 板级布局，只归档两个目录：
+    #   repo/targets/<board>/<sub>/packages/                    ← distfeeds 的 core 源
+    #   repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/ ← distfeeds 的 kmods 源
+    # base/luci/packages/routing/telephony 等应用源不打进包，设备端后续走第三方源
+    - name: 打包Core+Kmod安装包(产出 Core_Kmod-<内核版本>-<哈希>.zip)
+      working-directory: ./openwrt
+      run: |
+          # 1. 压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
+          #    哈希优先取 kmods 目录名末尾的 vermagic（与 kernel 依赖串一致）；
+          #    目录缺失时从 kernel_<ver>~<vermagic>-r1.ipk 文件名提取；
+          #    仍取不到则兜底用源码 commit 前 32 位
+          KVER3="${KERNEL_VER:-}"
+          KMOD_HASH=""
+          KMOD_DIR=$(find bin -type d -path "*kmods/*" | head -n 1)
+          if [ -n "$KMOD_DIR" ]; then
+            KMOD_BASE=$(basename "$KMOD_DIR")
+            KMOD_HASH="${KMOD_BASE##*-}"
+            [ -n "$KVER3" ] || KVER3="${KMOD_BASE%%-*}"
+          fi
+          if [ -z "$KMOD_HASH" ] || [ -z "$KVER3" ]; then
+            KPKG=$(ls bin/targets/*/*/packages/kernel_*.ipk 2>/dev/null | head -n 1)
+            if [ -n "$KPKG" ] && [ -f "$KPKG" ]; then
+              KB=$(basename "$KPKG")
+              if [ -z "$KVER3" ]; then
+                KVER3=$(printf '%s' "$KB" | sed -nE 's/^kernel_([0-9]+\.[0-9]+\.[0-9]+)~.*$/\1/p')
+              fi
+              if [ -z "$KMOD_HASH" ]; then
+                KMOD_HASH=$(printf '%s' "$KB" | sed -nE 's/^kernel_[0-9.]+~([0-9a-f]+)-r[0-9].*\.ipk$/\1/p')
+              fi
+            fi
+          fi
+          # 校验哈希为十六进制，否则回退
+          case "$KMOD_HASH" in
+            ""|*[!0-9a-f]*) KMOD_HASH=$(git rev-parse HEAD 2>/dev/null | cut -c1-32 || true) ;;
+          esac
+          # 二次校验：无 git 提交时 rev-parse 会输出 "HEAD"，此时用占位值
+          case "$KMOD_HASH" in
+            ""|*[!0-9a-f]*) KMOD_HASH="unknown" ;;
+          esac
+          [ -n "$KVER3" ] || KVER3="unknown"
+          ZIP_NAME="Core_Kmod-${KVER3}-${KMOD_HASH}.zip"
+          echo "安装包压缩包名: $ZIP_NAME"
+
+          # 1.5 把 firmware 包补进 core：先落盘到 bin 源目录，第 2 步统一收集
+          #     firmware 属 feeds/base（架构包），不由 bin/targets/<b>/<s>/packages 产出；
+          #     而 kmod 依赖它们（如 kmod-rtl8822ce -> rtl8822ce-firmware），
+          #     opkg 虽能强装，但不带固件时模块加载必然失败，所以随 core 一起归档。
+          #     kmod-*firmware* 也一并收（属内核固件包），收集时按 kmod-* 前缀归入 kmods 目录。
+          CORE_DIR=$(find bin/targets/*/*/packages -maxdepth 0 -type d 2>/dev/null | head -n 1 || true)
+          if [ -n "$CORE_DIR" ]; then
+            FW_ADDED=0
+            while IFS= read -r f; do
+              b=$(basename "$f")
+              # 按包名（而非文件名）判重：同一包的两个版本同时进入 core 索引，
+              # opkg 会解析出 duplicate package 或随机构建依赖树，必须避免
+              stem=$(printf '%s' "$b" | sed -E 's/[-_][0-9][^-_]*[-_]r[0-9]+.*$//')
+              if [ -e "$CORE_DIR/$b" ] || ls "$CORE_DIR" 2>/dev/null | grep -q "^${stem}[-_]"; then
+                echo "  = firmware 已存在同名包，跳过: $b"
+                continue
+              fi
+              if cp -f "$f" "$CORE_DIR/"; then
+                FW_ADDED=$((FW_ADDED + 1))
+                echo "  + firmware: $b"
+              else
+                echo "::warning::firmware 拷贝失败: $b"
+              fi
+            done < <(find bin/packages/*/base -maxdepth 1 -type f -name '*.ipk' 2>/dev/null | grep -i firmware)
+            echo "已补入 core 的 firmware 包: $FW_ADDED 个（kmod 依赖的固件）"
+          fi
+
+          # 2. 只归档板级两目录（不收 bin/packages/<arch> 下的应用源包）
+          #    唯一例外见上一步：kmod 依赖的 firmware 包已补进 core
+          STAGE=/workdir/pkg_stage
+          REPO="$STAGE/repo"
+          rm -rf "$STAGE"
+          mkdir -p "$REPO"
+          COUNT=0
+          KMOD_REL="kmods/${KVER3:-unknown}-1-${KMOD_HASH:-unknown}"
+          for sub in packages kmods; do
+            while IFS= read -r f; do
+              rel=${f#bin/}
+              b=$(basename "$f")
+              case "$b" in
+                kmod-*)
+                  # 构建树把 kmod 与其它板级包一起输出在 bin/targets/<b>/<s>/packages/，
+                  # 官方布局的 kmods/<ver>-1-<vermagic>/ 只有 release buildbot 才会生成，
+                  # 这里按包名把 kmod 拆到 kmods 目录，与官方 Supplementary Files 保持一致
+                  base=${rel%/packages/*}
+                  if [ "$base" = "$rel" ]; then
+                    base=${rel%/kmods/*}
+                  fi
+                  rel="$base/$KMOD_REL/$b"
+                  ;;
+              esac
+              mkdir -p "$REPO/$(dirname "$rel")"
+              cp -n "$f" "$REPO/$rel" 2>/dev/null || true
+              COUNT=$((COUNT + 1))
+            done < <(find bin/targets/*/*/"$sub" -type f -name "*.ipk" 2>/dev/null)
+          done
+          [ "$COUNT" -gt 0 ] || { echo "::error::未找到板级包（bin/targets/*/packages、*/kmods）"; exit 1; }
+          echo "共收集 $COUNT 个安装包（板级 packages + kmods）"
+          echo "=== 目录分布 ==="
+          find "$REPO" -type f -name "*.ipk" -printf '%h\n' | sed "s|^$REPO/||" | sort | uniq -c
+
+          # 2.5 去掉 ipk 文件名中的架构后缀（如 _arm_cortex-a5_vfpv4、_all），
+          #     与 apk 包命名风格对齐；索引在下一步按暂存文件名重新生成，Filename 自动同步
+          PKG_ARCH=$(find "$REPO" -type f -name '*.ipk' -printf '%f\n' 2>/dev/null \
+            | sed -nE 's/^.*-r[0-9]+_//; s/\.ipk$//p' | grep -v '^all$' | sort | uniq -c | sort -rn | head -n 1 | awk '{print $2}')
+          [ -n "$PKG_ARCH" ] || PKG_ARCH=$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' .config | head -n 1)
+          if [ -n "$PKG_ARCH" ]; then
+            RENAMED=0
+            while IFS= read -r f; do
+              b=$(basename "$f")
+              case "$b" in
+                *_${PKG_ARCH}.ipk) stem=${b%_${PKG_ARCH}.ipk} ;;
+                *_all.ipk)         stem=${b%_all.ipk} ;;
+                *) continue ;;
+              esac
+              mv -f "$f" "$(dirname "$f")/$stem.ipk"
+              RENAMED=$((RENAMED + 1))
+            done < <(find "$REPO" -type f -name '*.ipk')
+            echo "已去掉架构后缀(_${PKG_ARCH}/_all)的安装包: $RENAMED 个"
+          else
+            echo "::warning::未能确定目标架构，跳过去后缀"
+          fi
+
+          # 3. 逐目录生成 opkg 索引（索引与包同目录，Filename 用纯文件名）
+          USIGN="$PWD/staging_dir/host/bin/usign"
+          [ -x "$USIGN" ] || USIGN=$(command -v usign 2>/dev/null || true)
+          SIGN_KEY="$PWD/key-build"
+          CAN_SIGN=0
+          if [ -n "$USIGN" ] && [ -x "$USIGN" ] && [ -s "$SIGN_KEY" ]; then
+            CAN_SIGN=1
+          else
+            echo "::warning::未找到 usign 或 key-build，索引将不签名"
+            echo "           （lede 固件的 zzz-default-settings 已删除 /etc/opkg.conf 的 check_signature，不签名可直接安装）"
+          fi
+
+          gen_opkg_index() {
+            d="$1"
+            ls "$d"/*.ipk >/dev/null 2>&1 || return 0
+            : > "$d/Packages"
+            for f in "$d"/*.ipk; do
+              [ -e "$f" ] || continue
+              b=$(basename "$f")
+              ctl=$(tar -xzOf "$f" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null) || ctl=""
+              if [ -z "$ctl" ]; then
+                echo "::warning::无法解析 control，跳过: $b"
+                continue
+              fi
+              printf '%s\n' "$ctl" | awk -v fn="$b" -v sz="$(stat -c%s "$f")" -v sh="$(sha256sum "$f" | cut -d' ' -f1)" '
+                /^Description:/ && !done { print "Filename: " fn; print "Size: " sz; print "SHA256sum: " sh; done=1 }
+                { print }
+                END { if (!done) { print "Filename: " fn; print "Size: " sz; print "SHA256sum: " sh } }' >> "$d/Packages"
+              echo "" >> "$d/Packages"
+            done
+            if [ -s "$d/Packages" ]; then
+              gzip -9nc "$d/Packages" > "$d/Packages.gz"
+              if [ "$CAN_SIGN" = "1" ]; then
+                "$USIGN" -S -m "$d/Packages" -s "$SIGN_KEY" >/dev/null 2>&1 \
+                  || echo "::warning::索引签名失败: ${d#$REPO/}"
+              fi
+            fi
+          }
+
+          IDX_DIRS=0
+          while IFS= read -r d; do
+            gen_opkg_index "$d"
+            # 只统计真正产出了索引的目录（find 会遍历到 repo、repo/targets 等空目录）
+            [ -s "$d/Packages" ] && IDX_DIRS=$((IDX_DIRS + 1))
+          done < <(find "$REPO" -type d | sort)
+          IDX_PKGS=$(find "$REPO" -name Packages -type f -exec cat {} + 2>/dev/null | grep -c '^Package:' || true)
+          echo "[OK] 已为 ${IDX_DIRS} 个目录生成索引，索引共收录 ${IDX_PKGS} 个包"
+
+          # 4. 公钥 + 一键启用脚本（只会添加上面两个目录对应的源）
+          if [ "$CAN_SIGN" = "1" ] && [ -s "$PWD/key-build.pub" ]; then
+            cp -f "$PWD/key-build.pub" "$STAGE/key-build.pub"
+          fi
+
+          cat > "$STAGE/enable-local-repo.sh" <<'EOS'
+          #!/bin/sh
+          # 在路由器上执行： sh ./enable-local-repo.sh
+          # 只添加本地 core 与 kmods 两条源；base/luci 等应用源另行处理，无需改动本脚本
+          set -e
+          BASE=$(cd "$(dirname "$0")" && pwd)
+          CONF=/etc/opkg/customfeeds.conf
+          touch "$CONF"
+          if [ -f "$BASE/key-build.pub" ]; then
+            mkdir -p /etc/opkg/keys
+            FP=$(usign -F -p "$BASE/key-build.pub" 2>/dev/null || true)
+            if [ -n "$FP" ]; then
+              cp -f "$BASE/key-build.pub" "/etc/opkg/keys/$FP"
+              echo "已导入公钥: /etc/opkg/keys/$FP"
+            fi
+          fi
+          N=0
+          for P in $(cd "$BASE" && find repo -name Packages -type f 2>/dev/null); do
+            D=$(dirname "$P")
+            grep -q "file://$BASE/$D" "$CONF" 2>/dev/null && continue
+            N=$((N + 1))
+            echo "src/gz local_${N}_$(basename "$D") file://$BASE/$D" >> "$CONF"
+          done
+          echo "已添加 $N 条本地源到 $CONF"
+          echo "下一步：opkg update"
+          echo "若报签名错误，请注释 /etc/opkg.conf 中的 option check_signature（lede 固件默认已注释）"
+          EOS
+          chmod +x "$STAGE/enable-local-repo.sh"
+
+          cat > "$STAGE/README-PKG-REPO.txt" <<'EOF'
+          lede 6.18 本地软件源（只含 core 板级包 + kmods 内核模块，共两个目录）
+          ================================================================
+          压缩包命名：Core_Kmod-<三段内核版本>-<哈希>.zip
+          （哈希为内核 vermagic，与 opkg info kernel 输出中的串一致）
+          本包与官方 Supplementary Files 中的 packages/、kmods/ 两个目录对应：
+            repo/targets/<board>/<sub>/packages/                        ← distfeeds 的 core 源
+            repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>/    ← distfeeds 的 kmods 源
+
+          base / luci / packages / routing / telephony 等应用源【不在本包内】，
+          请使用第三方源（lede 没有可用的官方 master 源，mirrors.tencent.com/lede 已过时），
+          这样本地源与应用源没有同名包，不会互相覆盖。
+
+          【一键启用】解压到路由器或挂载目录后执行：
+              sh /mnt/usb/repo/enable-local-repo.sh
+              opkg update
+
+          【手动】在 /etc/opkg/customfeeds.conf 中加两条（与 distfeeds 写法一致）：
+              src/gz local_core  file:///mnt/usb/repo/repo/targets/<board>/<sub>/packages
+              src/gz local_kmods file:///mnt/usb/repo/repo/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>
+
+          【局域网 HTTP 方式】把 repo/ 下的目录结构放到 Web 服务器根，例如：
+              src/gz local_core  http://192.168.5.1/onecloud/lede/6.18/targets/<board>/<sub>/packages
+              src/gz local_kmods http://192.168.5.1/onecloud/lede/6.18/targets/<board>/<sub>/kmods/<内核版本>-1-<vermagic>
+
+          注意：
+          1) kmod 目录名必须与本机内核完全一致（opkg info kernel 或 cat /proc/version 核对）；
+          2) 不要 opkg install kernel（会覆盖运行中的内核）；
+          3) lede 固件的 zzz-default-settings 默认已删除 check_signature，未签名索引可直接安装；
+             若使用带 check_signature 的 opkg 配置，请先注释该行。
+          EOF
+
+          # 5. 压缩打包（安装包本身已压缩，使用存储模式加快速度）
+          rm -f "/workdir/${ZIP_NAME}"
+          (cd "$STAGE" && zip -q -0 -r "/workdir/${ZIP_NAME}" ./*)
+          du -sh "/workdir/${ZIP_NAME}"
+          # GitHub Release 单文件上限 2GiB，超限则提前报错
+          ZIP_BYTES=$(stat -c%s "/workdir/${ZIP_NAME}")
+          if [ "$ZIP_BYTES" -gt 2147483647 ]; then
+            echo "::error::安装包压缩包超过 2GiB 上限，无法上传 Release"
+            exit 1
+          fi
+          echo "PKG_ZIP=/workdir/${ZIP_NAME}" >> $GITHUB_ENV
+
+          echo "status=success" >> $GITHUB_OUTPUT
 
     - name: 制作直刷包
       # 注意：这里不要再写 "|| true"。
@@ -519,6 +819,15 @@ jobs:
           echo "⚠️ 警告：在 bin/targets/ 中没有找到任何 rootfs.tar 文件！"
         fi
 
+        # 2.5 复制 Core_Kmod 安装包压缩包（随 Release 一并上传，同 12/51）
+        if [ -n "${PKG_ZIP}" ] && [ -f "${PKG_ZIP}" ]; then
+          cp -f "${PKG_ZIP}" ./outfile/
+          echo "✅ Core_Kmod 安装包已加入发布目录: $(basename ${PKG_ZIP})"
+        else
+          echo "::error::Core_Kmod 安装包不存在: ${PKG_ZIP}"
+          exit 1
+        fi
+
         cp -rf .config ./outfile/config.txt || true
         cd outfile
         
@@ -557,6 +866,8 @@ jobs:
           📶 IPv6： lan6 口 DHCPv6 客户端，向上游请求地址（含 PD 前缀）
           📡 查看地址： 登录主路由后台 → 客户端/在线设备列表 → 找主机名 OneCloud
           💡 提示： 上游需开启 DHCP / DHCPv6（光猫或路由的 IPv6 要放行），否则对应协议拿不到地址
+          📦 Core+Kmod包： 板级 core + kmods 两个目录安装包（Core_Kmod-<内核版本>-<vermagic>.zip）
+          🔐 离线源： 仅 core+kmods 两个本地目录（与官方Supplementary Files一致），base/luci 等应用源请使用第三方源
         artifacts: ${{ env.FIRMWARE }}/*
         
     - name: 清理Releases
