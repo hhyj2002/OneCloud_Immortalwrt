@@ -350,7 +350,7 @@ jobs:
     #   （invalid flag in #cgo LDFLAGS），编译必失败。
     #   所以这里必须把 feeds install 装回的 ssr-plus / xray-core 包目录一并删除，
     #   配合 Config/onecloud-lede6.18.config 里的 INCLUDE_NONE_V2RAY=y 双保险。
-    - name: 移除默认包中的 ssr-plus（防连带编译 xray-core）
+    - name: 修补源码：剔除 ssr-plus 默认包 + 修复 kmod-fb 依赖
       working-directory: ./openwrt
       run: |
           # 1) 从 include/target.mk 的默认包中剔除 ssr-plus，并断言剔除成功
@@ -365,9 +365,9 @@ jobs:
 
           # 2) 删除 feeds install -a 刚刚装回的代理包目录（本步骤在 feeds install 之后，
           #    此时删除才真正有效；早前步骤里的 rm 在 feeds update 之前，会被装回来）
-          # 代理类剔除范围（本工作流启用 CONFIG_ALL 全量编译后，凡依赖可满足的包都会
-          # 被连带选中编译，必须整体剔除，否则 xray/naiveproxy 的 cronet 编译必挂，
-          # mihomo/v2raya 等也会白白拖慢编译）：
+          # 代理类剔除范围（CONFIG_ALL_KMODS 只影响 kmod；这里防的是两个连带源：
+          # ① helloworld 的 ssr-plus 有不带父依赖的 V2ray choice，会强制 select
+          #    xray-core（首次失败的主因）；② 上游 feed 里的坏包/代理包兜底剔除）：
           #   helloworld feed 整体（ssr-plus/naiveproxy/mihomo/shadowsocks-rust/...）
           #   packages feed：xray-core / v2ray-core / sing-box / hysteria / mihomo /
           #                  v2raya / v2ray-geodata / nikki / brook / trojan / chinadns-ng
@@ -394,6 +394,25 @@ jobs:
           done
           echo "✅ 已删除 feeds install 装回的 ssr-plus / xray-core / helloworld 等代理包目录"
 
+          # 3) 修复 lede 上游 kmod-fb 缺失的依赖声明（仅本工作流内修补，不改公用文件）
+          #    根因：video.mk 里 KernelPackage/fb 的 DEPENDS 只有 @DISPLAY_SUPPORT，
+          #    没声明 +kmod-backlight。在 meson8b 上内核配置未把 backlight 内置，
+          #    kmod-backlight 以模块形式产出 backlight.ko，6.18 内核的 fb.ko 依赖它，
+          #    而 kmod-fb 的 provides 只按 DEPENDS 声明合并依赖包 provides，
+          #    打包 kmod-fb 时 gen-dependencies.sh 必然报
+          #    "Package kmod-fb is missing dependencies: backlight.ko" → Error 1。
+          #    上游其它目标（mesongx/x86 等）没炸，是因为它们的内核配置把
+          #    CONFIG_BACKLIGHT_CLASS_DEVICE=y 内置了，fb.ko 不依赖模块版 backlight。
+          if grep -q "^ *DEPENDS:=@DISPLAY_SUPPORT$" package/kernel/linux/modules/video.mk; then
+            sed -i 's/^\( *DEPENDS:=@DISPLAY_SUPPORT\)$/\1 +kmod-backlight/' package/kernel/linux/modules/video.mk
+          fi
+          FB_FIX=$(grep -c "^ *DEPENDS:=@DISPLAY_SUPPORT +kmod-backlight$" package/kernel/linux/modules/video.mk)
+          if [ "$FB_FIX" -lt 1 ]; then
+            echo "::error::video.mk 的 kmod-fb 依赖修补失败（未匹配到 DEPENDS:=@DISPLAY_SUPPORT），终止编译"
+            exit 1
+          fi
+          echo "✅ kmod-fb 已补上 +kmod-backlight 依赖（$FB_FIX 处）"
+
           grep -n "DEFAULT_PACKAGES.router" include/target.mk
 
     - name: 下载编译环境
@@ -407,13 +426,20 @@ jobs:
             grep -q "^${sym}=y" .config || echo "${sym}=y" >> .config
           done
 
-          # ========== 全量编译开关（仿 12/51 号，为 Core_Kmod 安装包服务） ==========
-          # 编译全部 kmod + 全部 package（=m 只产 ipk 不进固件，固件本体不变），
-          # 供后面「打包Core+Kmod安装包」步骤归档板级 packages/kmods 两目录。
-          # ★ lede 的符号名是 CONFIG_ALL（config/Config-build.in），它会同时 select
-          #   ALL_KMODS / ALL_NONSHARED；24.10 的 CONFIG_ALL_PACKAGES 在 lede 里
-          #   不存在，写了会被 defconfig 静默丢弃，千万不要用。
-          for sym in CONFIG_ALL_KMODS CONFIG_ALL; do
+          # ========== 全量 kmod 编译开关（仿 12/51 号，为 Core_Kmod 安装包服务） ==========
+          # 只开 CONFIG_ALL_KMODS，不再开 CONFIG_ALL。原因（上次全量 run 的实测结论）：
+          #   1) Core_Kmod zip 只归档 bin/targets/<board>/<sub>/packages + kmods 两目录，
+          #      而那里只会出现 kmod-* / kernel / libc 等板级包（实测 844 个）；
+          #      CONFIG_ALL 拉起的 ~9400 个 feed 应用 =m 包全部落在 bin/packages/<arch>，
+          #      根本进不了 zip —— 纯属多花两三个小时编译。
+          #   2) CONFIG_ALL 会把上游坏包也拉起来连坐整个编译：
+          #      pgyvpn（上游下载源 404）、golang（Settings.sh 换成 sbwml 最新版后
+          #      target 包在本目标编译失败）等。去掉 CONFIG_ALL 后它们根本不被选中。
+          #   3) kmod 全量覆盖由 CONFIG_ALL_KMODS 独立保证（实测 1005 个 kmod=m），
+          #      与 CONFIG_ALL 无关；固件 =y 本体（474 个）完全不受影响。
+          #   注：lede 的符号名是 CONFIG_ALL_KMODS；24.10 的 CONFIG_ALL_PACKAGES 在
+          #   lede 里不存在，写了会被 defconfig 静默丢弃，千万不要用。
+          for sym in CONFIG_ALL_KMODS; do
             if grep -q "^${sym}=y" .config; then
               sed -i "s/^${sym}=.*/${sym}=y/" .config
             else
@@ -424,11 +450,11 @@ jobs:
           make defconfig
 
           # 校验全量开关在 defconfig 之后仍然保留
-          for sym in CONFIG_ALL CONFIG_ALL_KMODS; do
+          for sym in CONFIG_ALL_KMODS; do
             if grep -q "^${sym}=y" .config; then
-              echo "✅ ${sym} 已启用（=m 安装包 $(grep -c '^CONFIG_PACKAGE_.*=m$' .config) 个）"
+              echo "✅ ${sym} 已启用（kmod=m $(grep -c '^CONFIG_PACKAGE_kmod-.*=m$' .config) 个）"
             else
-              echo "::error::${sym} 未启用，Core_Kmod 包将缺少全量内容，终止编译！"
+              echo "::error::${sym} 未启用，Core_Kmod 包将缺少全量 kmod，终止编译！"
               exit 1
             fi
           done
