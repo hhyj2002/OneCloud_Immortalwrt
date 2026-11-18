@@ -403,6 +403,11 @@ jobs:
           #    "Package kmod-fb is missing dependencies: backlight.ko" → Error 1。
           #    上游其它目标（mesongx/x86 等）没炸，是因为它们的内核配置把
           #    CONFIG_BACKLIGHT_CLASS_DEVICE=y 内置了，fb.ko 不依赖模块版 backlight。
+          #    ★ 注意：不能只给 fb 加 +kmod-backlight —— 上游 kmod-backlight 自己
+          #      依赖 +kmod-fb，会形成 fb↔backlight 循环依赖，make 报
+          #      "Circular kmod-fb <- kmod-backlight dependency dropped" 后顺序失效
+          #      （run 44251436953 实测）。必须两处同时修：fb 补依赖 + backlight 去掉
+          #      +kmod-fb 打破环，backlight 的 AUTOLOAD 顺序不受影响。
           if grep -q "^ *DEPENDS:=@DISPLAY_SUPPORT$" package/kernel/linux/modules/video.mk; then
             sed -i 's/^\( *DEPENDS:=@DISPLAY_SUPPORT\)$/\1 +kmod-backlight/' package/kernel/linux/modules/video.mk
           fi
@@ -411,7 +416,13 @@ jobs:
             echo "::error::video.mk 的 kmod-fb 依赖修补失败（未匹配到 DEPENDS:=@DISPLAY_SUPPORT），终止编译"
             exit 1
           fi
-          echo "✅ kmod-fb 已补上 +kmod-backlight 依赖（$FB_FIX 处）"
+          sed -i 's/^\([ \t]*DEPENDS:=@DISPLAY_SUPPORT\) +kmod-fb$/\1/' package/kernel/linux/modules/video.mk
+          CYCLE=$(grep -c "^ *[ \t]*DEPENDS:=@DISPLAY_SUPPORT +kmod-fb$" package/kernel/linux/modules/video.mk)
+          if [ "$CYCLE" -ne 0 ]; then
+            echo "::error::video.mk 的 kmod-backlight 去除 +kmod-fb 失败（循环依赖未打破），终止编译"
+            exit 1
+          fi
+          echo "✅ kmod-fb 已补上 +kmod-backlight 依赖（$FB_FIX 处），kmod-backlight 的 +kmod-fb 已移除（循环依赖已打破）"
 
           grep -n "DEFAULT_PACKAGES.router" include/target.mk
 
