@@ -742,7 +742,7 @@ jobs:
           cd outfile
           KERNEL_VER=${{ env.KERNEL_VER }}
           # ===== 4. 重命名 rootfs 在线升级包 =====
-          ROOTFS_NAME="OneCloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
+          ROOTFS_NAME="Onecloud_${KERNEL_VER}_immortalwrt-amlogic-meson8b-thunder-rootfs.tar.gz"
           for file in *rootfs.tar.gz; do
             [ -f "$file" ] || continue
             [ "$file" = "$ROOTFS_NAME" ] && continue
@@ -769,7 +769,7 @@ jobs:
           allowUpdates: true
           makeLatest: false
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: OneCloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
+          tag: Onecloud_${{ env.OWRT_SOURCE }}_${{ env.OWRT_DATE }}_kernel_${{ env.KERNEL_VER }}
           body: |
             自用玩客云一站式直刷固件[${{ env.OWRT_brun_type }}]！
             请使用双USB公头线刷机！
