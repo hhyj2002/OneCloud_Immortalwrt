@@ -10,12 +10,11 @@ on:
         description: '选择源码Tag版本'
         required: true
         type: choice
-        default: v24.10.6
+        default: v24.10.7
         options:
+          - v24.10.7
           - v24.10.6
-          - v24.10.5
-          - v24.10.4
-          - v24.10.3
+
       OP_IP:
         description: '玩客云IP选项 (默认静态IP，进后台后可改DHCP)'
         required: true
