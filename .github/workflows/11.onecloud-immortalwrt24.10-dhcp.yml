@@ -12,12 +12,11 @@ on:
         description: '选择源码Tag版本'
         required: true
         type: choice
-        default: v24.10.6
+        default: v24.10.7
         options:
+          - v24.10.7
           - v24.10.6
-          - v24.10.5
-          - v24.10.4
-          - v24.10.3
+
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
